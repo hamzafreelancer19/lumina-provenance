@@ -35,14 +35,6 @@
 - [Node.js](https://nodejs.org/) (version 18.18+ or 20+ recommended)
 - `npm` (or `pnpm` / `yarn`)
 
-### 1. Clone & Install
-
-```bash
-git clone https://github.com/Mudassirdbs/chatgpt-image-watermark-remover.git
-cd chatgpt-image-watermark-remover
-npm install
-```
-
 ### 2. Run Development Server
 
 ```bash
