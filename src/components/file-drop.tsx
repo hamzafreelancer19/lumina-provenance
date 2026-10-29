@@ -5,11 +5,20 @@ import { Clipboard, Loader2, Upload } from 'lucide-react';
 import { preloadC2pa } from '@/lib/c2pa';
 
 interface FileDropProps {
-  onFile: (file: File) => void;
+  onFiles: (files: File[]) => void;
   busy: boolean;
+  busyLabel?: string;
 }
 
-export function FileDrop({ onFile, busy }: FileDropProps) {
+const IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif']);
+
+function imageFiles(list: FileList | File[] | null | undefined) {
+  return Array.from(list || []).filter(
+    (file) => IMAGE_TYPES.has(file.type) || /\.(jpe?g|png|webp|gif)$/i.test(file.name),
+  );
+}
+
+export function FileDrop({ onFiles, busy, busyLabel }: FileDropProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
 
@@ -18,8 +27,9 @@ export function FileDrop({ onFile, busy }: FileDropProps) {
     if (!busy) inputRef.current?.click();
   };
 
-  const accept = (file?: File) => {
-    if (file && !busy) onFile(file);
+  const accept = (list: FileList | File[] | null | undefined) => {
+    const files = imageFiles(list);
+    if (files.length && !busy) onFiles(files);
   };
 
   // Global clipboard paste listener
@@ -29,21 +39,22 @@ export function FileDrop({ onFile, busy }: FileDropProps) {
       const items = e.clipboardData?.items;
       if (!items) return;
 
+      const pasted: File[] = [];
       for (let i = 0; i < items.length; i++) {
         if (items[i].type.startsWith('image/')) {
           const pastedFile = items[i].getAsFile();
-          if (pastedFile) {
-            preloadC2pa();
-            onFile(pastedFile);
-            break;
-          }
+          if (pastedFile) pasted.push(pastedFile);
         }
+      }
+      if (pasted.length) {
+        preloadC2pa();
+        onFiles(pasted);
       }
     };
 
     window.addEventListener('paste', handlePaste);
     return () => window.removeEventListener('paste', handlePaste);
-  }, [onFile, busy]);
+  }, [onFiles, busy]);
 
   return (
     <div
@@ -73,7 +84,7 @@ export function FileDrop({ onFile, busy }: FileDropProps) {
       onDrop={(event) => {
         event.preventDefault();
         setDragging(false);
-        accept(event.dataTransfer.files[0]);
+        accept(event.dataTransfer.files);
       }}
     >
       <input
@@ -81,8 +92,12 @@ export function FileDrop({ onFile, busy }: FileDropProps) {
         data-testid="input-image-file"
         className="hidden"
         type="file"
+        multiple
         accept="image/jpeg,image/png,image/webp,image/gif"
-        onChange={(event) => accept(event.target.files?.[0])}
+        onChange={(event) => {
+          accept(event.target.files);
+          event.target.value = '';
+        }}
       />
 
       <div className="mb-3.5 flex h-12 w-12 items-center justify-center rounded-2xl border border-zinc-200 bg-white text-zinc-700 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-300 shadow-sm transition-transform duration-200 group-hover:scale-105">
@@ -94,13 +109,13 @@ export function FileDrop({ onFile, busy }: FileDropProps) {
       </div>
 
       <p className="text-sm font-semibold text-zinc-900 dark:text-zinc-100 tracking-tight">
-        {busy ? 'Inspecting image & C2PA manifest...' : 'Drop image here, browse, or paste'}
+        {busy ? busyLabel || 'Removing watermarks...' : 'Drop images here, browse, or paste'}
       </p>
 
       <p className="mt-1 max-w-[300px] text-xs text-zinc-500 dark:text-zinc-400 leading-relaxed">
         {busy
           ? 'Scanning cryptographic headers and OpenAI provenance manifests locally'
-          : 'Supports JPEG, PNG, and WebP up to 50 MB'}
+          : 'One or many. JPEG, PNG, and WebP up to 50 MB each'}
       </p>
 
       <div className="mt-4 flex flex-wrap items-center justify-center gap-1.5">

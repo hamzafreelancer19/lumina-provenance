@@ -8,6 +8,7 @@ import { Mark } from './mark';
 const links = [
   { href: '/', label: 'Watermark' },
   { href: '/create', label: 'Mockups' },
+  { href: '/seo', label: 'SEO' },
 ];
 
 export function Header() {
@@ -35,7 +36,7 @@ export function Header() {
           </div>
         </div>
 
-        <nav className="flex items-center gap-1 rounded-xl border border-zinc-200 bg-zinc-100/80 p-1" aria-label="Tools">
+        <nav className="flex min-w-0 items-center gap-0.5 overflow-x-auto rounded-xl border border-zinc-200 bg-zinc-100/80 p-1 sm:gap-1" aria-label="Tools">
           {links.map((link) => {
             const active = link.href === '/' ? pathname === '/' : pathname.startsWith(link.href);
             return (
@@ -43,7 +44,7 @@ export function Header() {
                 key={link.href}
                 href={link.href}
                 aria-current={active ? 'page' : undefined}
-                className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
+                className={`shrink-0 rounded-lg px-2 py-1.5 text-[11px] font-semibold transition sm:px-3 sm:text-xs ${
                   active
                     ? 'bg-white text-zinc-900 shadow-sm'
                     : 'text-zinc-500 hover:text-zinc-900'
@@ -55,20 +56,15 @@ export function Header() {
           })}
         </nav>
 
-        <div className="flex items-center gap-2.5">
-          {pathname === '/' && (
-            <span className="hidden items-center gap-1.5 rounded-full border border-zinc-200/90 bg-zinc-100/90 px-3 py-1 text-[11px] font-medium text-zinc-600 dark:border-zinc-800 dark:bg-zinc-900/80 dark:text-zinc-400 lg:inline-flex shadow-2xs">
-              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
-              Client-Side Only
-            </span>
-          )}
+        <div className="flex shrink-0 items-center gap-2.5">
           <button
             type="button"
             onClick={logout}
-            className="inline-flex items-center gap-1.5 rounded-full border border-zinc-200 bg-white px-3 py-1 text-[11px] font-semibold text-zinc-600 transition hover:border-zinc-300 hover:text-zinc-900"
+            className="inline-flex items-center gap-1.5 rounded-full border border-zinc-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-zinc-600 transition hover:border-zinc-300 hover:text-zinc-900 sm:px-3"
           >
             <LogOut className="h-3.5 w-3.5" />
-            Log out
+            <span className="hidden sm:inline">Log out</span>
+            <span className="sr-only sm:hidden">Log out</span>
           </button>
         </div>
       </div>

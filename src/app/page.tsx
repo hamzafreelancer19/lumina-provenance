@@ -205,16 +205,19 @@ function StudioApp() {
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
                 <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
               </span>
-              <span>AI Image Watermark Remover</span>
+              <span>Etsy Mockups</span>
             </div>
 
-            <h1 className="font-display text-3xl sm:text-4xl md:text-5xl font-extrabold tracking-tight leading-[1.15] bg-gradient-to-r from-emerald-700 via-emerald-600 to-teal-500 bg-clip-text text-transparent dark:from-emerald-300 dark:via-emerald-400 dark:to-teal-300">
-              AI Image <br className="hidden sm:inline" />
-              Watermark Remover
+            <h1 className="font-display text-3xl sm:text-4xl md:text-5xl font-extrabold tracking-tight leading-[1.15]">
+              <span className="bg-gradient-to-r from-emerald-700 via-emerald-600 to-teal-500 bg-clip-text text-transparent dark:from-emerald-300 dark:via-emerald-400 dark:to-teal-300">
+                Etsy Mockups
+              </span>
+              <br />
+              <span className="text-zinc-950 dark:text-zinc-50">AI Watermark Remover</span>
             </h1>
 
             <p className="mt-4 text-xs sm:text-sm text-zinc-600 dark:text-zinc-400 leading-relaxed max-w-xl mx-auto">
-              Remove hidden watermarks and metadata from AI images in your browser. Your files stay on this device and are never uploaded.
+              Remove AI watermarks and hidden metadata from Etsy mockups in your browser. Your files stay on this device and are never uploaded.
             </p>
 
             {/* Quick Feature Badges */}
@@ -245,7 +248,13 @@ function StudioApp() {
                   </span>
                 </div>
 
-                <FileDrop onFile={handleFile} busy={isBusy} />
+                <FileDrop
+                  onFiles={(files) => {
+                    const nextFile = files[0];
+                    if (nextFile) void handleFile(nextFile);
+                  }}
+                  busy={isBusy}
+                />
               </div>
 
               <div className="mt-4 flex items-center gap-2 text-[11px] text-zinc-500 pt-3 border-t border-zinc-200/80 dark:border-zinc-800/60">

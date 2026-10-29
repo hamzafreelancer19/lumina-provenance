@@ -55,7 +55,7 @@ export function LoginForm({ next }: { next: string }) {
             </p>
             <h1 className="mt-2 font-display text-3xl font-extrabold tracking-tight">Welcome back</h1>
             <p className="mt-2 max-w-xs text-sm leading-6 text-zinc-500">
-              Sign in to open the studio. Nothing here is available without a session.
+              Enter your credentials to access your workspace.
             </p>
           </div>
 
