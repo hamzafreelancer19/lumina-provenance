@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { hasValidSession } from '@/lib/auth';
 
 export const maxDuration = 120;
 
@@ -93,6 +94,10 @@ async function errorMessage(response: Response) {
 }
 
 export async function POST(request: Request) {
+  if (!(await hasValidSession(request))) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
   let body: {
     prompt?: unknown;
     n?: unknown;

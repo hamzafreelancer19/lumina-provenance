@@ -1,7 +1,8 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
+import { LogOut } from 'lucide-react';
 import { Mark } from './mark';
 
 const links = [
@@ -11,6 +12,13 @@ const links = [
 
 export function Header() {
   const pathname = usePathname();
+  const router = useRouter();
+
+  async function logout() {
+    await fetch('/api/auth/logout', { method: 'POST' });
+    router.replace('/login');
+    router.refresh();
+  }
 
   return (
     <header className="sticky top-0 z-40 w-full border-b border-zinc-200/80 bg-white/85 dark:border-zinc-800/80 dark:bg-zinc-950/85 backdrop-blur-md transition-colors duration-150">
@@ -47,14 +55,22 @@ export function Header() {
           })}
         </nav>
 
-        {pathname === '/' && (
         <div className="flex items-center gap-2.5">
-          <span className="hidden items-center gap-1.5 rounded-full border border-zinc-200/90 bg-zinc-100/90 px-3 py-1 text-[11px] font-medium text-zinc-600 dark:border-zinc-800 dark:bg-zinc-900/80 dark:text-zinc-400 lg:inline-flex shadow-2xs">
-            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
-            Client-Side Only
-          </span>
+          {pathname === '/' && (
+            <span className="hidden items-center gap-1.5 rounded-full border border-zinc-200/90 bg-zinc-100/90 px-3 py-1 text-[11px] font-medium text-zinc-600 dark:border-zinc-800 dark:bg-zinc-900/80 dark:text-zinc-400 lg:inline-flex shadow-2xs">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+              Client-Side Only
+            </span>
+          )}
+          <button
+            type="button"
+            onClick={logout}
+            className="inline-flex items-center gap-1.5 rounded-full border border-zinc-200 bg-white px-3 py-1 text-[11px] font-semibold text-zinc-600 transition hover:border-zinc-300 hover:text-zinc-900"
+          >
+            <LogOut className="h-3.5 w-3.5" />
+            Log out
+          </button>
         </div>
-        )}
       </div>
     </header>
   );

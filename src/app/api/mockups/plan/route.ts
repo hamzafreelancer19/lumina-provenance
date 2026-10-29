@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { hasValidSession } from '@/lib/auth';
 
 export const maxDuration = 60;
 
@@ -89,6 +90,10 @@ async function readPhotos(productImage: unknown, backgroundImages: unknown) {
 }
 
 export async function POST(request: Request) {
+  if (!(await hasValidSession(request))) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
   let body: { productImage?: unknown; backgroundImages?: unknown };
   try {
     body = await request.json();
