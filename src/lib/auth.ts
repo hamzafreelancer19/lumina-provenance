@@ -1,8 +1,12 @@
 export const SESSION_COOKIE = 'lumina_session';
 const SESSION_MS = 12 * 60 * 60 * 1000;
 
-type SessionPayload = {
+export type SessionRole = 'admin' | 'member';
+
+export type SessionPayload = {
   sub: string;
+  uid: string;
+  role: SessionRole;
   exp: number;
 };
 
@@ -47,13 +51,15 @@ export function safeNext(value: string | null | undefined) {
   if (!value || !value.startsWith('/') || value.startsWith('//') || value.includes('\\') || value.includes('://')) {
     return '/';
   }
-  if (value.startsWith('/login')) return '/';
+  if (value.startsWith('/login') || value.startsWith('/register')) return '/';
   return value;
 }
 
-export async function createSessionToken(username: string) {
+export async function createSessionToken(user: { id: string; username: string; role: SessionRole }) {
   const payload: SessionPayload = {
-    sub: username,
+    sub: user.username,
+    uid: user.id,
+    role: user.role,
     exp: Date.now() + SESSION_MS,
   };
   const encoded = bytesToBase64Url(new TextEncoder().encode(JSON.stringify(payload)));
@@ -76,10 +82,22 @@ export async function readSession(token: string | undefined | null): Promise<Ses
   if (!timingSafeEqual(expected, actual)) return null;
 
   try {
-    const payload = JSON.parse(new TextDecoder().decode(base64UrlToBytes(encoded))) as SessionPayload;
+    const payload = JSON.parse(new TextDecoder().decode(base64UrlToBytes(encoded))) as Partial<SessionPayload>;
     if (!payload?.sub || typeof payload.exp !== 'number' || payload.exp < Date.now()) return null;
-    if (payload.sub !== (process.env.AUTH_USERNAME || '')) return null;
-    return payload;
+    const envAdmin = process.env.AUTH_USERNAME || '';
+    const role: SessionRole | null =
+      payload.role === 'admin' || payload.role === 'member'
+        ? payload.role
+        : payload.sub === envAdmin
+          ? 'admin'
+          : null;
+    if (!role) return null;
+    return {
+      sub: payload.sub,
+      uid: typeof payload.uid === 'string' ? payload.uid : '',
+      role,
+      exp: payload.exp,
+    };
   } catch {
     return null;
   }
@@ -96,8 +114,12 @@ export function sessionCookieOptions(maxAge = SESSION_MS / 1000) {
   };
 }
 
-export async function hasValidSession(request: Request) {
+export async function sessionFromRequest(request: Request) {
   const header = request.headers.get('cookie') || '';
   const match = header.match(new RegExp(`(?:^|;\\s*)${SESSION_COOKIE}=([^;]+)`));
-  return Boolean(await readSession(match?.[1] ? decodeURIComponent(match[1]) : null));
+  return readSession(match?.[1] ? decodeURIComponent(match[1]) : null);
+}
+
+export async function hasValidSession(request: Request) {
+  return Boolean(await sessionFromRequest(request));
 }

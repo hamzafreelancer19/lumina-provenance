@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createSessionToken, sessionCookieOptions } from '@/lib/auth';
-import { secretsMatch } from '@/lib/password';
+import { authenticate, listUsers, logActivity } from '@/lib/store';
 
 export const runtime = 'nodejs';
 
@@ -41,11 +41,9 @@ function clearFailures(ip: string) {
 }
 
 export async function POST(request: Request) {
-  const username = process.env.AUTH_USERNAME || '';
-  const password = process.env.AUTH_PASSWORD || '';
   const authSecret = process.env.AUTH_SECRET || '';
 
-  if (!username || !password || authSecret.length < 32) {
+  if (authSecret.length < 32 || !(await listUsers()).length) {
     return NextResponse.json({ error: 'Sign-in is not configured on the server.' }, { status: 500 });
   }
 
@@ -67,21 +65,23 @@ export async function POST(request: Request) {
   const givenUser = typeof body.username === 'string' ? body.username : '';
   const givenPassword = typeof body.password === 'string' ? body.password : '';
 
-  if (
-    givenUser.length > 80 ||
-    givenPassword.length > 200 ||
-    !secretsMatch(givenUser, username) ||
-    !secretsMatch(givenPassword, password)
-  ) {
+  if (givenUser.length > 80 || givenPassword.length > 200) {
+    recordFailure(ip);
+    return NextResponse.json({ error: 'Username or password is incorrect.' }, { status: 401 });
+  }
+
+  const user = await authenticate(givenUser, givenPassword);
+  if (!user) {
     recordFailure(ip);
     return NextResponse.json({ error: 'Username or password is incorrect.' }, { status: 401 });
   }
 
   clearFailures(ip);
-  const response = NextResponse.json({ ok: true });
+  await logActivity(user.username, 'login', 'Signed in');
+  const response = NextResponse.json({ ok: true, role: user.role });
   response.cookies.set({
     ...sessionCookieOptions(),
-    value: await createSessionToken(username),
+    value: await createSessionToken({ id: user.id, username: user.username, role: user.role }),
   });
   return response;
 }

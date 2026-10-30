@@ -11,6 +11,7 @@ Sign-in is required. Watermark removal stays on the device. Mockups and listing 
 | Watermark | `/` | Inspects C2PA Content Credentials, DALL·E provenance, EXIF, and XMP, then saves a metadata-free copy. The image is not uploaded. |
 | Mockups | `/create` | Places a product photo into 1–6 background photos and generates 6 Etsy mockups with Grok Imagine. |
 | SEO | `/seo` | Reads a clear product photo plus competitor titles, descriptions, and tags. Grok returns a title (121–139 characters), a description, and up to 13 tags. An optional shop name is written into the description. Start with one competitor and use **Add competitor** for more, up to 8. |
+| Admin | `/admin` | Admins add and disable users, reset passwords, turn tools on or off, and review sign-in and tool activity. The account from `AUTH_USERNAME` is the first admin. |
 
 ## Setup
 

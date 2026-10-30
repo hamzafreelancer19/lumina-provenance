@@ -113,6 +113,15 @@ function StudioApp() {
     setError('');
 
     try {
+      const access = await fetch('/api/studio/access?tool=watermark');
+      if (!access.ok) {
+        const data = (await access.json().catch(() => null)) as { error?: string } | null;
+        setError(data?.error || 'This tool is turned off.');
+        setWorkflow(access.status === 401 ? 'idle' : 'error');
+        if (access.status === 401) window.location.assign('/login');
+        return;
+      }
+
       let raster = preCleanedResultRef.current;
       if (!raster && cleanPromiseRef.current) {
         raster = await cleanPromiseRef.current;
@@ -134,6 +143,11 @@ function StudioApp() {
 
       setCleaned(result);
       setWorkflow('cleaned');
+      void fetch('/api/activity', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'watermark', detail: `Cleaned ${file.name}` }),
+      });
     } catch (reason) {
       setError(
         reason instanceof Error

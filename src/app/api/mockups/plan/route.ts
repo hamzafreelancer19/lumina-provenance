@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
-import { hasValidSession } from '@/lib/auth';
+import { authorizeTool } from '@/lib/access';
+import { getApiKey } from '@/lib/store';
 
 export const maxDuration = 60;
 
@@ -90,9 +91,8 @@ async function readPhotos(productImage: unknown, backgroundImages: unknown) {
 }
 
 export async function POST(request: Request) {
-  if (!(await hasValidSession(request))) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
+  const access = await authorizeTool(request, 'mockups');
+  if (access.response) return access.response;
 
   let body: { productImage?: unknown; backgroundImages?: unknown };
   try {
@@ -101,10 +101,10 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'The request could not be read.' }, { status: 400 });
   }
 
-  const apiKey = process.env.XAI_API_KEY || '';
+  const apiKey = await getApiKey();
   if (!apiKey) {
     return NextResponse.json(
-      { error: 'XAI_API_KEY is missing from the server environment.' },
+      { error: 'Add an xAI API key in the admin panel.' },
       { status: 500 },
     );
   }

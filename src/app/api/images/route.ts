@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
-import { hasValidSession } from '@/lib/auth';
+import { authorizeTool } from '@/lib/access';
+import { getApiKey, logActivity } from '@/lib/store';
 
 export const maxDuration = 120;
 
@@ -94,9 +95,8 @@ async function errorMessage(response: Response) {
 }
 
 export async function POST(request: Request) {
-  if (!(await hasValidSession(request))) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
+  const access = await authorizeTool(request, 'mockups');
+  if (access.response) return access.response;
 
   let body: {
     prompt?: unknown;
@@ -121,11 +121,11 @@ export async function POST(request: Request) {
   const resolution = typeof body.resolution === 'string' ? body.resolution : '1k';
   const quality = typeof body.quality === 'string' ? body.quality : 'auto';
   const mockup = body.mode === 'mockup';
-  const apiKey = process.env.XAI_API_KEY || '';
+  const apiKey = await getApiKey();
 
   if (!apiKey) {
     return NextResponse.json(
-      { error: 'XAI_API_KEY is missing from the server environment.' },
+      { error: 'Add an xAI API key in the admin panel.' },
       { status: 500 },
     );
   }
@@ -220,6 +220,7 @@ export async function POST(request: Request) {
       }),
     );
 
+    if (mockup) await logActivity(access.user.username, 'mockups', `Generated ${images.length} mockup image${images.length === 1 ? '' : 's'}`);
     return NextResponse.json({ images });
   } catch (reason) {
     const message = reason instanceof Error ? reason.message : 'Could not save the generated images.';

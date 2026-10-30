@@ -16,11 +16,15 @@ export async function middleware(request: NextRequest) {
   }
 
   const session = await readSession(request.cookies.get(SESSION_COOKIE)?.value);
-  const isLogin = pathname === '/login' || pathname === '/api/auth/login';
+  const isAuthPage =
+    pathname === '/login' ||
+    pathname === '/register' ||
+    pathname === '/api/auth/login' ||
+    pathname === '/api/auth/register';
 
-  if (isLogin) {
-    if (session && pathname === '/login') {
-      return NextResponse.redirect(new URL('/', request.url));
+  if (isAuthPage) {
+    if (session && (pathname === '/login' || pathname === '/register')) {
+      return NextResponse.redirect(new URL(session.role === 'admin' ? '/admin' : '/', request.url));
     }
     return NextResponse.next();
   }
@@ -32,6 +36,16 @@ export async function middleware(request: NextRequest) {
     const login = new URL('/login', request.url);
     login.searchParams.set('next', safeNext(`${pathname}${search}`));
     return NextResponse.redirect(login);
+  }
+
+  if (
+    (pathname === '/admin' || pathname.startsWith('/admin/') || pathname.startsWith('/api/admin')) &&
+    session.role !== 'admin'
+  ) {
+    if (pathname.startsWith('/api/')) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+    return NextResponse.redirect(new URL('/', request.url));
   }
 
   const response = NextResponse.next();

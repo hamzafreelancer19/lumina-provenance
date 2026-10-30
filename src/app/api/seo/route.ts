@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
-import { hasValidSession } from '@/lib/auth';
+import { authorizeTool } from '@/lib/access';
+import { getApiKey, logActivity } from '@/lib/store';
 
 export const maxDuration = 60;
 
@@ -212,9 +213,8 @@ async function fitTitle(apiKey: string, listing: Listing, signal: AbortSignal) {
 }
 
 export async function POST(request: Request) {
-  if (!(await hasValidSession(request))) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
+  const access = await authorizeTool(request, 'seo');
+  if (access.response) return access.response;
 
   let body: { productImage?: unknown; shopName?: unknown; competitors?: unknown };
   try {
@@ -223,10 +223,10 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'The request could not be read.' }, { status: 400 });
   }
 
-  const apiKey = process.env.XAI_API_KEY || '';
+  const apiKey = await getApiKey();
   if (!apiKey) {
     return NextResponse.json(
-      { error: 'XAI_API_KEY is missing from the server environment.' },
+      { error: 'Add an xAI API key in the admin panel.' },
       { status: 500 },
     );
   }
@@ -278,6 +278,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Grok did not return enough tags. Try again.' }, { status: 502 });
     }
 
+    await logActivity(access.user.username, 'seo', 'Wrote a listing');
     return NextResponse.json({
       title,
       description: withShopName(listing.description, shopName),

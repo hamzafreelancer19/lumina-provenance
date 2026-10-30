@@ -1,6 +1,7 @@
 'use client';
 
 import { FormEvent, useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Eye, EyeOff, LockKeyhole, Loader2 } from 'lucide-react';
 import { Mark } from '@/components/mark';
@@ -24,13 +25,14 @@ export function LoginForm({ next }: { next: string }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username, password }),
       });
-      const data = (await response.json().catch(() => null)) as { error?: string } | null;
+      const data = (await response.json().catch(() => null)) as { error?: string; role?: string } | null;
       if (!response.ok) {
         setError(data?.error || 'Sign-in failed. Try again.');
         setPending(false);
         return;
       }
-      router.replace(next || '/');
+      const destination = data?.role === 'admin' ? '/admin' : next || '/';
+      router.replace(destination);
       router.refresh();
     } catch {
       setError('Could not reach the server. Try again.');
@@ -111,6 +113,16 @@ export function LoginForm({ next }: { next: string }) {
               {pending ? 'Signing in' : 'Sign in'}
             </button>
           </form>
+
+          <p className="mt-5 text-center text-sm text-zinc-500">
+            New here?{' '}
+            <Link
+              href={next && next !== '/' ? `/register?next=${encodeURIComponent(next)}` : '/register'}
+              className="font-semibold text-emerald-700 hover:text-emerald-800"
+            >
+              Create an account
+            </Link>
+          </p>
         </section>
       </main>
     </div>

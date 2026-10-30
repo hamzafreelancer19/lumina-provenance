@@ -1,8 +1,9 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { LogOut } from 'lucide-react';
+import { LogOut, Shield } from 'lucide-react';
 import { Mark } from './mark';
 
 const links = [
@@ -14,6 +15,29 @@ const links = [
 export function Header() {
   const pathname = usePathname();
   const router = useRouter();
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  useEffect(() => {
+    let cancel = false;
+    fetch('/api/auth/me')
+      .then(async (response) => {
+        if (cancel) return;
+        if (response.status === 401) {
+          await fetch('/api/auth/logout', { method: 'POST' });
+          if (cancel) return;
+          router.replace('/login');
+          router.refresh();
+          return;
+        }
+        if (!response.ok) return;
+        const data = (await response.json()) as { role?: string };
+        if (!cancel) setIsAdmin(data.role === 'admin');
+      })
+      .catch(() => undefined);
+    return () => {
+      cancel = true;
+    };
+  }, [router]);
 
   async function logout() {
     await fetch('/api/auth/logout', { method: 'POST' });
@@ -57,6 +81,20 @@ export function Header() {
         </nav>
 
         <div className="flex shrink-0 items-center gap-2.5">
+          {isAdmin && (
+            <Link
+              href="/admin"
+              className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold transition sm:px-3 ${
+                pathname.startsWith('/admin')
+                  ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                  : 'border-zinc-200 bg-white text-zinc-600 hover:border-zinc-300 hover:text-zinc-900'
+              }`}
+            >
+              <Shield className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Admin</span>
+              <span className="sr-only sm:hidden">Admin</span>
+            </Link>
+          )}
           <button
             type="button"
             onClick={logout}
