@@ -1,4 +1,4 @@
-import { randomUUID } from 'crypto';
+import { createHash, randomUUID } from 'crypto';
 import { existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'fs';
 import { dirname, join } from 'path';
 import type { SessionPayload } from '@/lib/auth';
@@ -110,17 +110,30 @@ function save(store: Store) {
   }
 }
 
+function envUserId(username: string) {
+  const hex = createHash('sha256').update(`lumina-env-user:${username}`).digest('hex');
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(13, 16)}-a${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
+}
+
 function addEnvAdmin(store: Store, username: string, password: string, displayName: string) {
   if (!username || !password) return false;
   const existing = store.users.find((user) => user.username.toLowerCase() === username.toLowerCase());
   if (existing) {
-    if (existing.role === 'admin' && !existing.disabled) return false;
-    existing.role = 'admin';
-    existing.disabled = false;
-    return true;
+    const stableId = envUserId(username);
+    let changed = false;
+    if (existing.id !== stableId) {
+      existing.id = stableId;
+      changed = true;
+    }
+    if (existing.role !== 'admin' || existing.disabled) {
+      existing.role = 'admin';
+      existing.disabled = false;
+      changed = true;
+    }
+    return changed;
   }
   store.users.push({
-    id: randomUUID(),
+    id: envUserId(username),
     username,
     displayName,
     passwordHash: hashPassword(password),
@@ -191,9 +204,9 @@ export function toPublicUser(user: StudioUser): PublicUser {
 
 export function findUser(session: Pick<SessionPayload, 'uid' | 'sub'>) {
   return updateStore((store) => {
-    const user = session.uid
-      ? store.users.find((item) => item.id === session.uid)
-      : store.users.find((item) => item.username === session.sub);
+    const byName = store.users.find((item) => item.username.toLowerCase() === session.sub.toLowerCase());
+    const byId = session.uid ? store.users.find((item) => item.id === session.uid) : undefined;
+    const user = byId || byName;
     return user ? toPublicUser(user) : null;
   });
 }

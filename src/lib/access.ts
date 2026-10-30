@@ -11,7 +11,10 @@ export async function requireUser(request: Request): Promise<
     return { response: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) };
   }
   const user = await findUser(session);
-  if (!user || user.disabled || (session.uid && user.id !== session.uid)) {
+  if (!user || user.disabled) {
+    return { response: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) };
+  }
+  if (user.id !== session.uid && user.username.toLowerCase() !== session.sub.toLowerCase()) {
     return { response: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) };
   }
   if (user.role !== session.role) {
