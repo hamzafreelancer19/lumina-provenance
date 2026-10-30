@@ -12,6 +12,8 @@ const PUBLIC_FILES = new Set([
   '/twitter-image',
 ]);
 
+const OPEN_API = new Set(['/api/auth/login', '/api/auth/register', '/api/studio/status']);
+
 export async function middleware(request: NextRequest) {
   const { pathname, search } = request.nextUrl;
 
@@ -28,7 +30,8 @@ export async function middleware(request: NextRequest) {
     pathname === '/login' ||
     pathname === '/register' ||
     pathname === '/api/auth/login' ||
-    pathname === '/api/auth/register';
+    pathname === '/api/auth/register' ||
+    OPEN_API.has(pathname);
 
   if (isAuthPage) {
     if (session && (pathname === '/login' || pathname === '/register')) {

@@ -14,10 +14,11 @@ export async function GET(request: Request) {
     displayName: result.user.displayName,
     role: result.user.role,
     studioName: settings.studioName,
+    maintenance: settings.maintenanceMode,
     tools: {
-      watermark: settings.watermarkEnabled || result.user.role === 'admin',
-      mockups: settings.mockupsEnabled || result.user.role === 'admin',
-      seo: settings.seoEnabled || result.user.role === 'admin',
+      watermark: settings.watermarkEnabled,
+      mockups: settings.mockupsEnabled,
+      seo: settings.seoEnabled,
     },
   });
 }

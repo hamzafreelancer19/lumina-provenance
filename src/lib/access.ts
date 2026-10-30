@@ -36,6 +36,11 @@ export async function authorizeTool(request: Request, tool: 'watermark' | 'mocku
   const result = await requireUser(request);
   if (result.response) return result;
   const settings = await getSettings();
+  if (settings.maintenanceMode && result.user.role !== 'admin') {
+    return {
+      response: NextResponse.json({ error: 'The studio is under maintenance.' }, { status: 403 }),
+    };
+  }
   const enabled =
     tool === 'watermark'
       ? settings.watermarkEnabled

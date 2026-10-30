@@ -1,43 +1,23 @@
 'use client';
 
-import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { LogOut, Shield } from 'lucide-react';
 import { Mark } from './mark';
+import { useStudio } from './studio-gate';
 
 const links = [
-  { href: '/', label: 'Watermark' },
-  { href: '/create', label: 'Mockups' },
-  { href: '/seo', label: 'SEO' },
+  { href: '/', label: 'Watermark', tool: 'watermark' as const },
+  { href: '/create', label: 'Mockups', tool: 'mockups' as const },
+  { href: '/seo', label: 'SEO', tool: 'seo' as const },
 ];
 
 export function Header() {
   const pathname = usePathname();
   const router = useRouter();
-  const [isAdmin, setIsAdmin] = useState(false);
-
-  useEffect(() => {
-    let cancel = false;
-    fetch('/api/auth/me')
-      .then(async (response) => {
-        if (cancel) return;
-        if (response.status === 401) {
-          await fetch('/api/auth/logout', { method: 'POST' });
-          if (cancel) return;
-          router.replace('/login');
-          router.refresh();
-          return;
-        }
-        if (!response.ok) return;
-        const data = (await response.json()) as { role?: string };
-        if (!cancel) setIsAdmin(data.role === 'admin');
-      })
-      .catch(() => undefined);
-    return () => {
-      cancel = true;
-    };
-  }, [router]);
+  const studio = useStudio();
+  const isAdmin = studio.role === 'admin';
+  const visibleLinks = links.filter((link) => isAdmin || studio.tools[link.tool]);
 
   async function logout() {
     await fetch('/api/auth/logout', { method: 'POST' });
@@ -60,8 +40,8 @@ export function Header() {
           </div>
         </div>
 
-        <nav className="flex min-w-0 items-center gap-0.5 overflow-x-auto rounded-xl border border-zinc-200 bg-zinc-100/80 p-1 sm:gap-1" aria-label="Tools">
-          {links.map((link) => {
+        <nav className={`flex min-w-0 items-center gap-0.5 overflow-x-auto rounded-xl border border-zinc-200 bg-zinc-100/80 p-1 sm:gap-1 ${visibleLinks.length === 0 ? 'hidden' : ''}`} aria-label="Tools">
+          {visibleLinks.map((link) => {
             const active = link.href === '/' ? pathname === '/' : pathname.startsWith(link.href);
             return (
               <Link

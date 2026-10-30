@@ -14,6 +14,7 @@ export async function PATCH(request: Request) {
     mockupsEnabled?: unknown;
     seoEnabled?: unknown;
     registrationEnabled?: unknown;
+    maintenanceMode?: unknown;
     xaiApiKey?: unknown;
     clearApiKey?: unknown;
   };
@@ -42,6 +43,7 @@ export async function PATCH(request: Request) {
       mockupsEnabled: typeof body.mockupsEnabled === 'boolean' ? body.mockupsEnabled : undefined,
       seoEnabled: typeof body.seoEnabled === 'boolean' ? body.seoEnabled : undefined,
       registrationEnabled: typeof body.registrationEnabled === 'boolean' ? body.registrationEnabled : undefined,
+      maintenanceMode: typeof body.maintenanceMode === 'boolean' ? body.maintenanceMode : undefined,
     });
     await logActivity(result.user.username, 'settings.update', 'Updated studio settings');
     return NextResponse.json({ settings });

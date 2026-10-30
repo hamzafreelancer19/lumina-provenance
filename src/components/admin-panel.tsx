@@ -39,6 +39,7 @@ type StudioSettings = {
   mockupsEnabled: boolean;
   seoEnabled: boolean;
   registrationEnabled: boolean;
+  maintenanceMode: boolean;
 };
 
 type ApiKeyStatus = {
@@ -563,19 +564,39 @@ function SettingsSection({
     }
   }
 
-  const tools: { key: 'watermarkEnabled' | 'mockupsEnabled' | 'seoEnabled' | 'registrationEnabled'; label: string; note: string }[] = [
-    { key: 'registrationEnabled', label: 'Registration', note: 'People can create a member account from the sign-in page.' },
-    { key: 'watermarkEnabled', label: 'Watermark', note: 'Members can clean images in the browser.' },
-    { key: 'mockupsEnabled', label: 'Mockups', note: 'Members can generate Etsy mockups.' },
-    { key: 'seoEnabled', label: 'SEO', note: 'Members can write listing copy.' },
+  const pages: { key: 'watermarkEnabled' | 'mockupsEnabled' | 'seoEnabled'; label: string; note: string }[] = [
+    { key: 'watermarkEnabled', label: 'Watermark', note: 'Shown in the member menu. Untick to hide it immediately.' },
+    { key: 'mockupsEnabled', label: 'Mockups', note: 'Shown in the member menu. Untick to hide it immediately.' },
+    { key: 'seoEnabled', label: 'SEO', note: 'Shown in the member menu. Untick to hide it immediately.' },
   ];
+
+  async function saveFlag(patch: Partial<StudioSettings>) {
+    setDraft((current) => ({ ...current, ...patch }));
+    setPending(true);
+    onError('');
+    try {
+      const response = await fetch('/api/admin/settings', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(patch),
+      });
+      if (!response.ok) throw new Error(await readError(response));
+      onNotice('Saved. Members will see this within a few seconds.');
+      await onChange();
+    } catch (reason) {
+      onError(reason instanceof Error ? reason.message : 'Could not save settings.');
+      await onChange();
+    } finally {
+      setPending(false);
+    }
+  }
 
   return (
     <div className="space-y-4">
       <div>
         <h1 className="font-display text-2xl font-extrabold tracking-tight">Settings</h1>
         <p className="mt-1 text-sm text-zinc-500">
-          Turning a tool off blocks members. Admins can still use it. The xAI key saved here is used by Mockups and SEO.
+          Untick a page to hide it from members right away. Admins can still open every page.
         </p>
       </div>
       <form
@@ -656,22 +677,50 @@ function SettingsSection({
           )}
         </div>
       </form>
-      <form onSubmit={onSubmit} className="space-y-4 rounded-3xl border border-white bg-white p-5 shadow-sm">
-        <Field label="Studio name" value={draft.studioName} onChange={(studioName) => setDraft({ ...draft, studioName })} />
-        {tools.map((tool) => (
-          <label key={tool.key} className="flex items-start justify-between gap-4 rounded-2xl border border-zinc-100 px-3 py-3">
+      <section className="space-y-3 rounded-3xl border border-white bg-white p-5 shadow-sm">
+        <label className="flex items-start justify-between gap-4 rounded-2xl border border-amber-200 bg-amber-50 px-3 py-3">
+          <span>
+            <span className="block text-sm font-semibold text-amber-950">Maintenance mode</span>
+            <span className="block text-sm text-amber-800">
+              Members see a maintenance screen instead of the studio. Admins keep full access.
+            </span>
+          </span>
+          <input
+            type="checkbox"
+            checked={draft.maintenanceMode}
+            onChange={(event) => void saveFlag({ maintenanceMode: event.target.checked })}
+            className="mt-1"
+          />
+        </label>
+        {pages.map((page) => (
+          <label key={page.key} className="flex items-start justify-between gap-4 rounded-2xl border border-zinc-100 px-3 py-3">
             <span>
-              <span className="block text-sm font-semibold">{tool.label}</span>
-              <span className="block text-sm text-zinc-500">{tool.note}</span>
+              <span className="block text-sm font-semibold">{page.label}</span>
+              <span className="block text-sm text-zinc-500">{page.note}</span>
             </span>
             <input
               type="checkbox"
-              checked={draft[tool.key]}
-              onChange={(event) => setDraft({ ...draft, [tool.key]: event.target.checked })}
+              checked={draft[page.key]}
+              onChange={(event) => void saveFlag({ [page.key]: event.target.checked })}
               className="mt-1"
             />
           </label>
         ))}
+        <label className="flex items-start justify-between gap-4 rounded-2xl border border-zinc-100 px-3 py-3">
+          <span>
+            <span className="block text-sm font-semibold">Registration</span>
+            <span className="block text-sm text-zinc-500">People can create a member account from the sign-in page.</span>
+          </span>
+          <input
+            type="checkbox"
+            checked={draft.registrationEnabled}
+            onChange={(event) => void saveFlag({ registrationEnabled: event.target.checked })}
+            className="mt-1"
+          />
+        </label>
+      </section>
+      <form onSubmit={onSubmit} className="space-y-4 rounded-3xl border border-white bg-white p-5 shadow-sm">
+        <Field label="Studio name" value={draft.studioName} onChange={(studioName) => setDraft({ ...draft, studioName })} />
         <p className="flex items-start gap-2 text-xs leading-5 text-zinc-500">
           <KeyRound className="mt-0.5 h-3.5 w-3.5 shrink-0" />
           The username and password in the server environment always sign in as admin, even after a password change here.

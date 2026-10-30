@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next';
 import { Inter, JetBrains_Mono, Plus_Jakarta_Sans } from 'next/font/google';
 import { getStructuredData } from '@/lib/json-ld';
 import { ThemeProvider } from '@/components/theme-provider';
+import { StudioGate } from '@/components/studio-gate';
 import './globals.css';
 
 const inter = Inter({
@@ -136,7 +137,9 @@ export default function RootLayout({
         suppressHydrationWarning
         className="font-sans antialiased bg-zinc-50 text-zinc-900 dark:bg-[#09090b] dark:text-zinc-100 min-h-screen transition-colors duration-150"
       >
-        <ThemeProvider>{children}</ThemeProvider>
+        <ThemeProvider>
+          <StudioGate>{children}</StudioGate>
+        </ThemeProvider>
       </body>
     </html>
   );

@@ -31,6 +31,7 @@ export type Settings = {
   mockupsEnabled: boolean;
   seoEnabled: boolean;
   registrationEnabled: boolean;
+  maintenanceMode: boolean;
   xaiApiKey?: string;
 };
 
@@ -40,6 +41,7 @@ export type PublicSettings = {
   mockupsEnabled: boolean;
   seoEnabled: boolean;
   registrationEnabled: boolean;
+  maintenanceMode: boolean;
 };
 
 export type ApiKeyStatus = {
@@ -71,6 +73,7 @@ function defaultSettings(): Settings {
     mockupsEnabled: true,
     seoEnabled: true,
     registrationEnabled: true,
+    maintenanceMode: false,
   };
 }
 
@@ -345,6 +348,7 @@ function publicSettings(settings: Settings): PublicSettings {
     mockupsEnabled: settings.mockupsEnabled,
     seoEnabled: settings.seoEnabled,
     registrationEnabled: settings.registrationEnabled !== false,
+    maintenanceMode: settings.maintenanceMode === true,
   };
 }
 
@@ -378,6 +382,7 @@ export function saveSettings(patch: Partial<PublicSettings>) {
     if (typeof patch.mockupsEnabled === 'boolean') store.settings.mockupsEnabled = patch.mockupsEnabled;
     if (typeof patch.seoEnabled === 'boolean') store.settings.seoEnabled = patch.seoEnabled;
     if (typeof patch.registrationEnabled === 'boolean') store.settings.registrationEnabled = patch.registrationEnabled;
+    if (typeof patch.maintenanceMode === 'boolean') store.settings.maintenanceMode = patch.maintenanceMode;
     return publicSettings(store.settings);
   });
 }

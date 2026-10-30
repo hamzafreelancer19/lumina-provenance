@@ -37,6 +37,9 @@ export async function POST(request: Request) {
   }
 
   const settings = await getSettings();
+  if (settings.maintenanceMode) {
+    return NextResponse.json({ error: 'The studio is under maintenance.' }, { status: 403 });
+  }
   if (!settings.registrationEnabled) {
     return NextResponse.json({ error: 'Registration is turned off.' }, { status: 403 });
   }
