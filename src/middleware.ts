@@ -2,7 +2,15 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { SESSION_COOKIE, readSession, safeNext } from '@/lib/auth';
 
-const PUBLIC_FILES = new Set(['/favicon.ico', '/favicon.svg', '/robots.txt', '/sitemap.xml']);
+const PUBLIC_FILES = new Set([
+  '/favicon.ico',
+  '/favicon.svg',
+  '/robots.txt',
+  '/sitemap.xml',
+  '/manifest.webmanifest',
+  '/opengraph-image',
+  '/twitter-image',
+]);
 
 export async function middleware(request: NextRequest) {
   const { pathname, search } = request.nextUrl;

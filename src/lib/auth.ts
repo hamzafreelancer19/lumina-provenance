@@ -51,7 +51,15 @@ export function safeNext(value: string | null | undefined) {
   if (!value || !value.startsWith('/') || value.startsWith('//') || value.includes('\\') || value.includes('://')) {
     return '/';
   }
-  if (value.startsWith('/login') || value.startsWith('/register')) return '/';
+  if (
+    value.startsWith('/login') ||
+    value.startsWith('/register') ||
+    value === '/manifest.webmanifest' ||
+    value === '/robots.txt' ||
+    value === '/sitemap.xml'
+  ) {
+    return '/';
+  }
   return value;
 }
 
