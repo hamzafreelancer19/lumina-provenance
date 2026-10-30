@@ -1,5 +1,6 @@
-import { createHash, randomUUID } from 'crypto';
+import { createHash, createHmac, randomUUID, timingSafeEqual } from 'crypto';
 import { existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'fs';
+import { cookies } from 'next/headers';
 import { dirname, join } from 'path';
 import type { SessionPayload } from '@/lib/auth';
 import { hashPassword, secretsMatch, verifyPassword } from '@/lib/password';
@@ -54,7 +55,11 @@ type Store = {
   users: StudioUser[];
   activity: Activity[];
   settings: Settings;
+  revision: number;
+  deletedUsers: string[];
 };
+
+const DIR_COOKIE = 'lumina_dir';
 
 export type PublicUser = Omit<StudioUser, 'passwordHash'>;
 
@@ -78,7 +83,7 @@ function defaultSettings(): Settings {
 }
 
 function emptyStore(): Store {
-  return { users: [], activity: [], settings: defaultSettings() };
+  return { users: [], activity: [], settings: defaultSettings(), revision: 0, deletedUsers: [] };
 }
 
 function normalize(value: Store): Store {
@@ -86,7 +91,88 @@ function normalize(value: Store): Store {
     users: Array.isArray(value.users) ? value.users : [],
     activity: Array.isArray(value.activity) ? value.activity : [],
     settings: { ...defaultSettings(), ...(value.settings || {}) },
+    revision: typeof value.revision === 'number' ? value.revision : 0,
+    deletedUsers: Array.isArray(value.deletedUsers) ? value.deletedUsers.map((name) => name.toLowerCase()) : [],
   };
+}
+
+function absorb(base: Store, extra: Store | null): Store {
+  if (!extra) return base;
+  const deleted = new Set([...(base.deletedUsers || []), ...(extra.deletedUsers || [])]);
+  const extraWins = (extra.revision || 0) >= (base.revision || 0);
+  const settings = extraWins
+    ? { ...extra.settings, xaiApiKey: extra.settings.xaiApiKey || base.settings.xaiApiKey }
+    : { ...base.settings, xaiApiKey: base.settings.xaiApiKey || extra.settings.xaiApiKey };
+  const map = new Map<string, StudioUser>();
+  for (const user of [...(extraWins ? base.users : extra.users), ...(extraWins ? extra.users : base.users)]) {
+    if (deleted.has(user.username.toLowerCase())) continue;
+    map.set(user.username.toLowerCase(), user);
+  }
+  return {
+    users: [...map.values()],
+    settings,
+    activity: base.activity.length >= extra.activity.length ? base.activity : extra.activity,
+    revision: Math.max(base.revision || 0, extra.revision || 0),
+    deletedUsers: [...deleted],
+  };
+}
+
+function signDir(payload: string) {
+  const secret = process.env.AUTH_SECRET || '';
+  if (secret.length < 32) return '';
+  const signature = createHmac('sha256', secret).update(payload).digest('base64url');
+  return `${payload}.${signature}`;
+}
+
+function readDirValue(value: string): Store | null {
+  const secret = process.env.AUTH_SECRET || '';
+  const splitAt = value.lastIndexOf('.');
+  if (splitAt <= 0 || secret.length < 32) return null;
+  const payload = value.slice(0, splitAt);
+  const signature = value.slice(splitAt + 1);
+  const expected = createHmac('sha256', secret).update(payload).digest('base64url');
+  const left = Buffer.from(signature);
+  const right = Buffer.from(expected);
+  if (left.length !== right.length || !timingSafeEqual(left, right)) return null;
+  try {
+    return normalize(JSON.parse(Buffer.from(payload, 'base64url').toString('utf8')) as Store);
+  } catch {
+    return null;
+  }
+}
+
+async function readDirCookie(): Promise<Store | null> {
+  try {
+    const jar = await cookies();
+    const value = jar.get(DIR_COOKIE)?.value;
+    return value ? readDirValue(value) : null;
+  } catch {
+    return null;
+  }
+}
+
+async function writeDirCookie(store: Store) {
+  const copy: Store = {
+    ...store,
+    activity: [],
+    settings: { ...store.settings },
+  };
+  delete copy.settings.xaiApiKey;
+  const payload = Buffer.from(JSON.stringify(copy)).toString('base64url');
+  const signed = signDir(payload);
+  if (!signed || signed.length > 3800) return;
+  try {
+    const jar = await cookies();
+    jar.set(DIR_COOKIE, signed, {
+      httpOnly: true,
+      sameSite: 'lax',
+      secure: process.env.NODE_ENV === 'production',
+      path: '/',
+      maxAge: 60 * 60 * 24 * 400,
+    });
+  } catch {
+    // Server Components can read this cookie, but only route handlers can update it.
+  }
 }
 
 function save(store: Store) {
@@ -120,6 +206,7 @@ function envUserId(username: string) {
 
 function addEnvAdmin(store: Store, username: string, password: string, displayName: string) {
   if (!username || !password) return false;
+  store.deletedUsers = store.deletedUsers.filter((name) => name !== username.toLowerCase());
   const existing = store.users.find((user) => user.username.toLowerCase() === username.toLowerCase());
   if (existing) {
     const stableId = envUserId(username);
@@ -176,22 +263,29 @@ function readStoredFile(): Store | null {
   }
 }
 
-function load(): Store {
-  if (!memory) {
-    memory = readStoredFile() || emptyStore();
-  }
-  if (seed(memory)) save(memory);
-  return memory;
-}
-
 let chain: Promise<void> = Promise.resolve();
 
 function updateStore<T>(mutator: (store: Store) => T): Promise<T> {
   let result!: T;
-  const run = chain.then(() => {
-    const store = load();
+  const run = chain.then(async () => {
+    let store = absorb(memory || emptyStore(), readStoredFile());
+    store = absorb(store, await readDirCookie());
+    const changedBySeed = seed(store);
+    const before = JSON.stringify({
+      users: store.users,
+      settings: store.settings,
+      deletedUsers: store.deletedUsers,
+    });
     result = mutator(store);
+    const after = JSON.stringify({
+      users: store.users,
+      settings: store.settings,
+      deletedUsers: store.deletedUsers,
+    });
+    if (changedBySeed || before !== after) store.revision = Date.now();
+    memory = store;
     save(store);
+    if (store.revision) await writeDirCookie(store);
   });
   chain = run.then(
     () => undefined,
@@ -266,6 +360,7 @@ export function createStudioUser(input: {
     if (store.users.some((user) => user.username.toLowerCase() === username.toLowerCase())) {
       throw new Error('That username is already in use.');
     }
+    store.deletedUsers = store.deletedUsers.filter((name) => name !== username.toLowerCase());
     const now = Date.now();
     const user: StudioUser = {
       id: randomUUID(),
@@ -337,6 +432,7 @@ export function deleteStudioUser(id: string, actorId: string) {
       throw new Error('Keep at least one active admin.');
     }
     store.users = store.users.filter((item) => item.id !== id);
+    store.deletedUsers.push(user.username.toLowerCase());
     return toPublicUser(user);
   });
 }

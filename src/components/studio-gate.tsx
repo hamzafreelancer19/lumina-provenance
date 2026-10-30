@@ -59,15 +59,37 @@ export function StudioGate({ children }: { children: React.ReactNode }) {
       try {
         const response = await fetch('/api/auth/me', { cache: 'no-store' });
         if (cancel) return;
-        if (response.status === 401) {
-          if (!isAuthPath(pathname)) {
+        if (response.status === 401 && !isAuthPath(pathname)) {
+          await new Promise((resolve) => window.setTimeout(resolve, 400));
+          if (cancel) return;
+          const again = await fetch('/api/auth/me', { cache: 'no-store' });
+          if (cancel) return;
+          if (again.ok) {
+            const data = (await again.json()) as {
+              role?: Role;
+              maintenance?: boolean;
+              tools?: StudioTools;
+            };
+            setState({
+              ready: true,
+              role: data.role === 'admin' || data.role === 'member' ? data.role : null,
+              maintenance: Boolean(data.maintenance),
+              tools: {
+                watermark: data.tools?.watermark !== false,
+                mockups: data.tools?.mockups !== false,
+                seo: data.tools?.seo !== false,
+              },
+            });
+            return;
+          }
+          if (again.status === 401) {
             await fetch('/api/auth/logout', { method: 'POST' });
             if (!cancel) {
               router.replace('/login');
               router.refresh();
             }
+            setState((current) => ({ ...current, ready: true, role: null }));
           }
-          setState((current) => ({ ...current, ready: true, role: null }));
           return;
         }
         if (!response.ok) return;
