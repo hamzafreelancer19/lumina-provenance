@@ -60,7 +60,8 @@ const USERNAME = /^[a-zA-Z0-9._-]{3,32}$/;
 const ACTIVITY_LIMIT = 200;
 
 function filePath() {
-  return join(process.cwd(), 'data', 'studio.json');
+  const root = process.env.VERCEL ? '/tmp' : join(process.cwd(), 'data');
+  return join(root, 'studio.json');
 }
 
 function defaultSettings(): Settings {
@@ -86,21 +87,26 @@ function normalize(value: Store): Store {
 }
 
 function save(store: Store) {
-  const path = filePath();
-  mkdirSync(dirname(path), { recursive: true });
-  const body = JSON.stringify(store, null, 2);
-  const temp = `${path}.${process.pid}.tmp`;
-  writeFileSync(temp, body);
   try {
-    if (existsSync(path)) unlinkSync(path);
-    renameSync(temp, path);
-  } catch {
-    writeFileSync(path, body);
+    const path = filePath();
+    mkdirSync(dirname(path), { recursive: true });
+    const body = JSON.stringify(store, null, 2);
+    const temp = `${path}.${process.pid}.tmp`;
+    writeFileSync(temp, body);
     try {
-      unlinkSync(temp);
+      if (existsSync(path)) unlinkSync(path);
+      renameSync(temp, path);
     } catch {
-      // The temp file is only a fallback if the replace did not finish.
+      writeFileSync(path, body);
+      try {
+        unlinkSync(temp);
+      } catch {
+        // The temp file is only a fallback if the replace did not finish.
+      }
     }
+  } catch {
+    // Serverless hosts such as Vercel keep the app directory read-only.
+    // The in-memory copy still serves this running instance.
   }
 }
 
@@ -142,18 +148,24 @@ function seed(store: Store) {
   return primary || detected;
 }
 
-function load(): Store {
-  const path = filePath();
-  mkdirSync(dirname(path), { recursive: true });
-  if (!existsSync(path)) {
-    const store = emptyStore();
-    seed(store);
-    save(store);
-    return store;
+let memory: Store | null = null;
+
+function readStoredFile(): Store | null {
+  try {
+    const path = filePath();
+    if (!existsSync(path)) return null;
+    return normalize(JSON.parse(readFileSync(path, 'utf8')) as Store);
+  } catch {
+    return null;
   }
-  const store = normalize(JSON.parse(readFileSync(path, 'utf8')) as Store);
-  if (seed(store)) save(store);
-  return store;
+}
+
+function load(): Store {
+  if (!memory) {
+    memory = readStoredFile() || emptyStore();
+  }
+  if (seed(memory)) save(memory);
+  return memory;
 }
 
 let chain: Promise<void> = Promise.resolve();
