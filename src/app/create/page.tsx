@@ -5,7 +5,7 @@ import { Header } from '@/components/header';
 
 export const metadata: Metadata = {
   title: 'Etsy Mockups',
-  description: 'Upload a product photo and background photos to make 6 Etsy mockups.',
+  description: 'Upload a product photo to make 6 Etsy mockups with Flux.',
 };
 
 export default function CreatePage() {
@@ -17,7 +17,7 @@ export default function CreatePage() {
       </div>
       <Footer
         label="Etsy mockups"
-        note="Mockups are generated with Grok Imagine and billed to your xAI account."
+        note="Mockups keep your product reference with Cloudflare Flux 2 Dev for higher detail and change only the scene."
       />
     </div>
   );

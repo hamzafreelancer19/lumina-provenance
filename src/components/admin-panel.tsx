@@ -89,6 +89,7 @@ type Overview = {
   };
   xai: ApiKeyStatus;
   groq: ApiKeyStatus;
+  cloudflare: ApiKeyStatus;
 };
 
 const nav: { id: Section; label: string; icon: typeof LayoutDashboard }[] = [
@@ -217,6 +218,7 @@ export function AdminPanel() {
             settings={data.settings}
             xai={data.xai}
             groq={data.groq}
+            cloudflare={data.cloudflare}
             onChange={refresh}
             onNotice={setNotice}
             onError={setError}
@@ -244,8 +246,8 @@ function OverviewSection({ data }: { data: Overview }) {
         <h1 className="font-display text-2xl font-extrabold tracking-tight">Overview</h1>
         <p className="mt-1 text-sm text-zinc-500">
           Signed in as {data.me.username}. Groq{' '}
-          {data.groq.configured ? `is set (${data.groq.hint})` : 'is missing'}; xAI{' '}
-          {data.xai.configured ? `is set (${data.xai.hint})` : 'is missing'}.
+          {data.groq.configured ? `is set (${data.groq.hint})` : 'is missing'}; Cloudflare{' '}
+          {data.cloudflare.configured ? `is set (${data.cloudflare.hint})` : 'is missing'}.
         </p>
       </div>
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
@@ -593,6 +595,7 @@ function SettingsSection({
   settings,
   xai,
   groq,
+  cloudflare,
   onChange,
   onNotice,
   onError,
@@ -600,6 +603,7 @@ function SettingsSection({
   settings: StudioSettings;
   xai: ApiKeyStatus;
   groq: ApiKeyStatus;
+  cloudflare: ApiKeyStatus;
   onChange: () => Promise<void>;
   onNotice: (value: string) => void;
   onError: (value: string) => void;
@@ -607,9 +611,12 @@ function SettingsSection({
   const [draft, setDraft] = useState(settings);
   const [apiKey, setApiKey] = useState('');
   const [groqKey, setGroqKey] = useState('');
+  const [cfAccountId, setCfAccountId] = useState('');
+  const [cfApiToken, setCfApiToken] = useState('');
   const [pending, setPending] = useState(false);
   const [keyPending, setKeyPending] = useState(false);
   const [groqPending, setGroqPending] = useState(false);
+  const [cfPending, setCfPending] = useState(false);
 
   async function onSubmit(event: FormEvent) {
     event.preventDefault();
@@ -675,6 +682,96 @@ function SettingsSection({
         className="space-y-4 rounded-3xl border border-white bg-white p-5 shadow-sm"
         onSubmit={async (event) => {
           event.preventDefault();
+          setCfPending(true);
+          onError('');
+          try {
+            const response = await fetch('/api/admin/settings', {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                cloudflareAccountId: cfAccountId,
+                cloudflareApiToken: cfApiToken,
+              }),
+            });
+            if (!response.ok) throw new Error(await readError(response));
+            setCfAccountId('');
+            setCfApiToken('');
+            onNotice('Cloudflare Workers AI saved. Mockups will use Flux 2 Dev with product reference.');
+            await onChange();
+          } catch (reason) {
+            onError(reason instanceof Error ? reason.message : 'Could not save Cloudflare credentials.');
+          } finally {
+            setCfPending(false);
+          }
+        }}
+      >
+        <div>
+          <h2 className="font-display text-lg font-extrabold">Cloudflare Workers AI</h2>
+          <p className="mt-1 text-sm text-zinc-500">
+            {cloudflare.configured
+              ? `Active ${cloudflare.hint}${cloudflare.source === 'environment' ? ' from the server environment' : ''}. Used for Flux 2 Dev product-reference mockups.`
+              : 'Needed for mockups. Create a Workers AI API token in the Cloudflare dashboard, then paste Account ID and token here.'}
+          </p>
+        </div>
+        <Field
+          label="Account ID"
+          value={cfAccountId}
+          onChange={setCfAccountId}
+          required={false}
+          autoComplete="off"
+          placeholder="Cloudflare account id"
+        />
+        <Field
+          label="Workers AI API token"
+          value={cfApiToken}
+          onChange={setCfApiToken}
+          type="password"
+          required={false}
+          autoComplete="off"
+          placeholder="Cloudflare API token"
+        />
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="submit"
+            disabled={cfPending || cfAccountId.trim().length < 8 || cfApiToken.trim().length < 20}
+            className="inline-flex h-10 items-center gap-2 rounded-2xl bg-emerald-600 px-4 text-sm font-semibold text-white disabled:opacity-70"
+          >
+            {cfPending && <Loader2 className="h-4 w-4 animate-spin" />}
+            Save Cloudflare AI
+          </button>
+          {cloudflare.source === 'panel' && (
+            <button
+              type="button"
+              disabled={cfPending}
+              onClick={async () => {
+                setCfPending(true);
+                onError('');
+                try {
+                  const response = await fetch('/api/admin/settings', {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ clearCloudflareAi: true }),
+                  });
+                  if (!response.ok) throw new Error(await readError(response));
+                  onNotice('Saved Cloudflare credentials removed.');
+                  await onChange();
+                } catch (reason) {
+                  onError(reason instanceof Error ? reason.message : 'Could not remove Cloudflare credentials.');
+                } finally {
+                  setCfPending(false);
+                }
+              }}
+              className="inline-flex h-10 items-center rounded-2xl border border-zinc-200 px-4 text-sm font-semibold text-zinc-700 disabled:opacity-70"
+            >
+              Remove saved credentials
+            </button>
+          )}
+        </div>
+      </form>
+      <form
+        className="space-y-4 rounded-3xl border border-white bg-white p-5 shadow-sm"
+        onSubmit={async (event) => {
+          event.preventDefault();
           setGroqPending(true);
           onError('');
           try {
@@ -685,7 +782,7 @@ function SettingsSection({
             });
             if (!response.ok) throw new Error(await readError(response));
             setGroqKey('');
-            onNotice('Groq key saved. Auto-rename and SEO will use it now.');
+            onNotice('Groq key saved. Auto-rename, SEO, Keywords, and mockup planning will use it now.');
             await onChange();
           } catch (reason) {
             onError(reason instanceof Error ? reason.message : 'Could not save the Groq API key.');

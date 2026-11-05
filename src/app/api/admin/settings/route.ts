@@ -2,9 +2,11 @@ import { NextResponse } from 'next/server';
 import { requireAdmin } from '@/lib/access';
 import {
   clearApiKey,
+  clearCloudflareAi,
   clearGroqApiKey,
   logActivity,
   saveApiKey,
+  saveCloudflareAi,
   saveGroqApiKey,
   saveSettings,
 } from '@/lib/store';
@@ -27,6 +29,9 @@ export async function PATCH(request: Request) {
     clearApiKey?: unknown;
     groqApiKey?: unknown;
     clearGroqApiKey?: unknown;
+    cloudflareAccountId?: unknown;
+    cloudflareApiToken?: unknown;
+    clearCloudflareAi?: unknown;
   };
   try {
     body = await request.json();
@@ -47,6 +52,12 @@ export async function PATCH(request: Request) {
       return NextResponse.json({ groq });
     }
 
+    if (body.clearCloudflareAi === true) {
+      const cloudflare = await clearCloudflareAi();
+      await logActivity(result.user.username, 'settings.update', 'Removed Cloudflare Workers AI credentials');
+      return NextResponse.json({ cloudflare });
+    }
+
     if (typeof body.xaiApiKey === 'string') {
       const xai = await saveApiKey(body.xaiApiKey);
       await logActivity(result.user.username, 'settings.update', 'Saved the xAI API key');
@@ -57,6 +68,18 @@ export async function PATCH(request: Request) {
       const groq = await saveGroqApiKey(body.groqApiKey);
       await logActivity(result.user.username, 'settings.update', 'Saved the Groq API key');
       return NextResponse.json({ groq });
+    }
+
+    if (
+      typeof body.cloudflareAccountId === 'string' ||
+      typeof body.cloudflareApiToken === 'string'
+    ) {
+      const cloudflare = await saveCloudflareAi({
+        accountId: typeof body.cloudflareAccountId === 'string' ? body.cloudflareAccountId : '',
+        apiToken: typeof body.cloudflareApiToken === 'string' ? body.cloudflareApiToken : '',
+      });
+      await logActivity(result.user.username, 'settings.update', 'Saved Cloudflare Workers AI credentials');
+      return NextResponse.json({ cloudflare });
     }
 
     const settings = await saveSettings({

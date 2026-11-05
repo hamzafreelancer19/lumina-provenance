@@ -45,6 +45,8 @@ export type Settings = {
   xaiApiKey?: string;
   /** One or more Groq keys, comma-separated. */
   groqApiKey?: string;
+  cloudflareAccountId?: string;
+  cloudflareApiToken?: string;
 };
 
 export type PublicSettings = {
@@ -149,11 +151,19 @@ function absorb(base: Store, extra: Store | null): Store {
         ...extra.settings,
         xaiApiKey: extra.settings.xaiApiKey || base.settings.xaiApiKey,
         groqApiKey: extra.settings.groqApiKey || base.settings.groqApiKey,
+        cloudflareAccountId:
+          extra.settings.cloudflareAccountId || base.settings.cloudflareAccountId,
+        cloudflareApiToken:
+          extra.settings.cloudflareApiToken || base.settings.cloudflareApiToken,
       }
     : {
         ...base.settings,
         xaiApiKey: base.settings.xaiApiKey || extra.settings.xaiApiKey,
         groqApiKey: base.settings.groqApiKey || extra.settings.groqApiKey,
+        cloudflareAccountId:
+          base.settings.cloudflareAccountId || extra.settings.cloudflareAccountId,
+        cloudflareApiToken:
+          base.settings.cloudflareApiToken || extra.settings.cloudflareApiToken,
       };
   const map = new Map<string, StudioUser>();
   for (const user of [...(extraWins ? base.users : extra.users), ...(extraWins ? extra.users : base.users)]) {
@@ -211,6 +221,7 @@ async function writeDirCookie(store: Store) {
   };
   delete copy.settings.xaiApiKey;
   delete copy.settings.groqApiKey;
+  delete copy.settings.cloudflareApiToken;
   const payload = Buffer.from(JSON.stringify(copy)).toString('base64url');
   const signed = signDir(payload);
   if (!signed || signed.length > 3800) return;
@@ -556,6 +567,26 @@ function groqApiKeyStatus(settings: Settings): ApiKeyStatus {
   };
 }
 
+function cloudflareAiStatus(settings: Settings): ApiKeyStatus {
+  const storedAccount = settings.cloudflareAccountId?.trim() || '';
+  const storedToken = settings.cloudflareApiToken?.trim() || '';
+  const envAccount = process.env.CLOUDFLARE_ACCOUNT_ID?.trim() || '';
+  const envToken =
+    process.env.CLOUDFLARE_API_TOKEN?.trim() ||
+    process.env.CLOUDFLARE_AI_API_TOKEN?.trim() ||
+    '';
+  const account = storedAccount || envAccount;
+  const token = storedToken || envToken;
+  const configured = Boolean(account && token);
+  return {
+    configured,
+    source: storedToken || storedAccount ? 'panel' : configured ? 'environment' : 'none',
+    hint: configured
+      ? `account ${account.slice(0, 4)}… · token ••••${token.slice(-4)}`
+      : '',
+  };
+}
+
 export function getSettings() {
   return updateStore((store) => publicSettings(store.settings));
 }
@@ -630,6 +661,46 @@ export function clearGroqApiKey() {
   });
 }
 
+export function getCloudflareAiCredentials() {
+  return updateStore((store) => {
+    const accountId =
+      store.settings.cloudflareAccountId?.trim() ||
+      process.env.CLOUDFLARE_ACCOUNT_ID?.trim() ||
+      '';
+    const apiToken =
+      store.settings.cloudflareApiToken?.trim() ||
+      process.env.CLOUDFLARE_API_TOKEN?.trim() ||
+      process.env.CLOUDFLARE_AI_API_TOKEN?.trim() ||
+      '';
+    if (!accountId || !apiToken) return null;
+    return { accountId, apiToken };
+  });
+}
+
+export function saveCloudflareAi(input: { accountId: string; apiToken: string }) {
+  const accountId = input.accountId.trim();
+  const apiToken = input.apiToken.trim();
+  if (!accountId || accountId.length < 8 || accountId.length > 64) {
+    throw new Error('Paste a valid Cloudflare Account ID.');
+  }
+  if (apiToken.length < 20 || apiToken.length > 200 || /\s/.test(apiToken)) {
+    throw new Error('Paste a valid Cloudflare Workers AI API token.');
+  }
+  return updateStore((store) => {
+    store.settings.cloudflareAccountId = accountId;
+    store.settings.cloudflareApiToken = apiToken;
+    return cloudflareAiStatus(store.settings);
+  });
+}
+
+export function clearCloudflareAi() {
+  return updateStore((store) => {
+    delete store.settings.cloudflareAccountId;
+    delete store.settings.cloudflareApiToken;
+    return cloudflareAiStatus(store.settings);
+  });
+}
+
 export function logActivity(username: string, action: string, detail: string) {
   return updateStore((store) => {
     store.activity.unshift({
@@ -665,6 +736,7 @@ export function overview() {
       },
       xai: apiKeyStatus(store.settings),
       groq: groqApiKeyStatus(store.settings),
+      cloudflare: cloudflareAiStatus(store.settings),
     };
   });
 }

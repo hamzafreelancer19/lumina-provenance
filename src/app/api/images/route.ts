@@ -1,97 +1,37 @@
 import { NextResponse } from 'next/server';
 import { authorizeTool } from '@/lib/access';
-import { getApiKey, logActivity } from '@/lib/store';
+import { cloudflareAiConfigured, runFluxMockup } from '@/lib/cloudflare-ai';
+import { logActivity } from '@/lib/store';
 
-export const maxDuration = 120;
+export const maxDuration = 300;
 
-const ASPECT_RATIOS = new Set([
-  '1:1',
-  '16:9',
-  '9:16',
-  '4:3',
-  '3:4',
-  '3:2',
-  '2:3',
-  'auto',
-]);
-const RESOLUTIONS = new Set(['1k', '2k']);
-const QUALITIES = new Set(['low', 'medium', 'auto']);
+const QUALITIES = new Set(['low', 'medium', 'high', 'auto']);
 
-type ImageItem = {
-  b64_json?: string;
-  url?: string;
-};
-
-function mimeFromBase64(value: string) {
-  if (value.startsWith('iVBOR')) return 'image/png';
-  if (value.startsWith('/9j/')) return 'image/jpeg';
-  if (value.startsWith('UklGR')) return 'image/webp';
-  return 'image/png';
+function settingsForQuality(quality: string) {
+  if (quality === 'high') {
+    return { size: 1536, steps: 32, guidance: 4.5 };
+  }
+  if (quality === 'medium') {
+    return { size: 1280, steps: 28, guidance: 4 };
+  }
+  if (quality === 'low') {
+    return { size: 1024, steps: 20, guidance: 3.5 };
+  }
+  // auto → high-quality default for mockups
+  return { size: 1408, steps: 28, guidance: 4 };
 }
 
-const DATA_URL = /^data:(image\/(?:png|jpeg|webp));base64,([A-Za-z0-9+/=\s]+)$/;
-
-function sourceImage(value: unknown, label: string) {
-  if (value == null || value === '') return null;
-  if (typeof value !== 'string') {
-    throw new Error(`${label} must be a PNG, JPEG, or WebP image.`);
-  }
-
-  const match = value.match(DATA_URL);
-  if (!match) {
-    throw new Error(`${label} must be a PNG, JPEG, or WebP image.`);
-  }
-
-  const encoded = match[2].replace(/\s/g, '');
-  const bytes = Buffer.from(encoded, 'base64');
-  if (!bytes.length || bytes.length > 6 * 1024 * 1024) {
-    throw new Error(`${label} must be under 6 MB.`);
-  }
-
-  return {
-    type: 'image_url' as const,
-    url: `data:${match[1]};base64,${encoded}`,
-  };
-}
-
-function editPrompt(prompt: string, hasProduct: boolean, hasReference: boolean, mockup: boolean) {
-  if (mockup) return prompt;
-  if (hasProduct && hasReference) {
-    return `The first image is the product. Keep its shape, colors, branding, and details accurate. The second image is a reference for the scene, lighting, and composition. ${prompt}`;
-  }
-  if (hasProduct) {
-    return `The uploaded image is the product. Keep its shape, colors, branding, and details accurate. ${prompt}`;
-  }
-  return `The uploaded image is a reference for the scene, lighting, and composition. ${prompt}`;
-}
-
-function mimeFromHeader(value: string | null) {
-  if (!value) return 'image/png';
-  const mime = value.split(';')[0]?.trim().toLowerCase();
-  if (mime === 'image/png' || mime === 'image/jpeg' || mime === 'image/webp') return mime;
-  return 'image/png';
-}
-
-async function errorMessage(response: Response) {
-  if (response.status === 401 || response.status === 403) {
-    return 'The xAI API key was rejected. Check the key and try again.';
-  }
-
-  const text = await response.text();
-  try {
-    const payload = JSON.parse(text) as {
-      error?: { message?: string } | string;
-      message?: string;
-    };
-    const nested = payload.error;
-    const message =
-      typeof nested === 'string' ? nested : nested?.message || payload.message;
-    if (message?.trim()) return message.trim();
-  } catch {
-    // The upstream body was not JSON.
-  }
-
-  return text.trim().slice(0, 240) || `Image generation failed (${response.status}).`;
+function mockupPrompt(prompt: string) {
+  return [
+    'Photorealistic product mockup. Use the exact product from image 0 as the hero subject.',
+    'Preserve its shape, colors, print, logo, texture, and materials with high fidelity.',
+    prompt.trim(),
+    'Shot on a full-frame camera, 50mm lens, commercial catalog lighting, crisp detail, natural color, soft realistic shadows, shallow depth of field.',
+    'Etsy listing ready, premium lifestyle photography, no text overlays, watermarks, collage borders, or extra products.',
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .slice(0, 2048);
 }
 
 export async function POST(request: Request) {
@@ -101,11 +41,8 @@ export async function POST(request: Request) {
   let body: {
     prompt?: unknown;
     n?: unknown;
-    aspectRatio?: unknown;
-    resolution?: unknown;
     quality?: unknown;
     productImage?: unknown;
-    referenceImage?: unknown;
     mode?: unknown;
   };
 
@@ -115,20 +52,22 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'The request could not be read.' }, { status: 400 });
   }
 
-  const prompt = typeof body.prompt === 'string' ? body.prompt.trim() : '';
-  const count = Number(body.n);
-  const aspectRatio = typeof body.aspectRatio === 'string' ? body.aspectRatio : '1:1';
-  const resolution = typeof body.resolution === 'string' ? body.resolution : '1k';
-  const quality = typeof body.quality === 'string' ? body.quality : 'auto';
-  const mockup = body.mode === 'mockup';
-  const apiKey = await getApiKey();
-
-  if (!apiKey) {
+  if (!(await cloudflareAiConfigured())) {
     return NextResponse.json(
-      { error: 'Add an xAI API key in the admin panel.' },
+      {
+        error:
+          'Add Cloudflare Account ID and Workers AI API token in Admin → Settings for Flux mockups.',
+      },
       { status: 500 },
     );
   }
+
+  const prompt = typeof body.prompt === 'string' ? body.prompt.trim() : '';
+  const count = Number(body.n);
+  const quality = typeof body.quality === 'string' ? body.quality : 'auto';
+  const mockup = body.mode === 'mockup';
+  const productImage = typeof body.productImage === 'string' ? body.productImage : '';
+
   if (!prompt || prompt.length > 4000) {
     return NextResponse.json(
       { error: 'Each prompt needs text, with a maximum of 4000 characters.' },
@@ -138,92 +77,55 @@ export async function POST(request: Request) {
   if (!Number.isInteger(count) || count < 1 || count > 10) {
     return NextResponse.json({ error: 'Choose between 1 and 10 images.' }, { status: 400 });
   }
-  if (!ASPECT_RATIOS.has(aspectRatio) || !RESOLUTIONS.has(resolution) || !QUALITIES.has(quality)) {
-    return NextResponse.json({ error: 'Choose a supported size and quality.' }, { status: 400 });
+  if (!QUALITIES.has(quality)) {
+    return NextResponse.json({ error: 'Choose a supported quality.' }, { status: 400 });
   }
-
-  let product: ReturnType<typeof sourceImage>;
-  let reference: ReturnType<typeof sourceImage>;
-  try {
-    product = sourceImage(body.productImage, 'The product image');
-    reference = sourceImage(body.referenceImage, 'The reference image');
-  } catch (reason) {
-    const message = reason instanceof Error ? reason.message : 'Upload a PNG, JPEG, or WebP image.';
-    return NextResponse.json({ error: message }, { status: 400 });
+  if (mockup && !productImage) {
+    return NextResponse.json({ error: 'A mockup needs the product photo.' }, { status: 400 });
   }
-
-  const sources = [product, reference].filter((image) => image !== null);
-  if (mockup && sources.length < 2) {
+  if (!productImage) {
     return NextResponse.json(
-      { error: 'A mockup needs both the product photo and a background photo.' },
+      { error: 'Upload a product reference image for Flux mockups.' },
       { status: 400 },
     );
   }
-  const requestBody = {
-    model: 'grok-imagine-image-2.0',
-    prompt: sources.length ? editPrompt(prompt, Boolean(product), Boolean(reference), mockup) : prompt,
-    n: count,
-    aspect_ratio: aspectRatio,
-    resolution,
-    quality,
-    response_format: 'b64_json' as const,
-    ...(sources.length === 1 ? { image: sources[0] } : {}),
-    ...(sources.length > 1 ? { images: sources } : {}),
-  };
 
-  let upstream: Response;
   try {
-    upstream = await fetch(
-      sources.length ? 'https://api.x.ai/v1/images/edits' : 'https://api.x.ai/v1/images/generations',
-      {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(requestBody),
+    const finalPrompt = mockup ? mockupPrompt(prompt) : prompt.slice(0, 2048);
+    const settings = settingsForQuality(quality);
+    const images = [];
+
+    for (let index = 0; index < count; index += 1) {
+      if (request.signal.aborted) break;
+      const image = await runFluxMockup({
+        prompt: finalPrompt,
+        productImage,
+        width: settings.size,
+        height: settings.size,
+        steps: settings.steps,
+        guidance: settings.guidance,
         signal: request.signal,
-      },
-    );
-  } catch {
-    return NextResponse.json(
-      { error: 'Could not reach the Grok image API.' },
-      { status: 502 },
-    );
-  }
+      });
+      images.push({ b64: image.b64, mime: image.mime });
+    }
 
-  if (!upstream.ok) {
-    return NextResponse.json({ error: await errorMessage(upstream) }, { status: upstream.status });
-  }
+    if (!images.length) {
+      return NextResponse.json({ error: 'Flux returned no images.' }, { status: 502 });
+    }
 
-  const payload = (await upstream.json()) as { data?: ImageItem[] };
-  const items = Array.isArray(payload.data) ? payload.data : [];
-  if (!items.length) {
-    return NextResponse.json({ error: 'Grok returned no images.' }, { status: 502 });
-  }
-
-  try {
-    const images = await Promise.all(
-      items.map(async (item) => {
-        if (item.b64_json) {
-          return { b64: item.b64_json, mime: mimeFromBase64(item.b64_json) };
-        }
-        if (!item.url) throw new Error('Grok returned an empty image.');
-
-        const imageResponse = await fetch(item.url, { signal: request.signal });
-        if (!imageResponse.ok) throw new Error('Could not download a generated image.');
-        const bytes = Buffer.from(await imageResponse.arrayBuffer());
-        return {
-          b64: bytes.toString('base64'),
-          mime: mimeFromHeader(imageResponse.headers.get('content-type')),
-        };
-      }),
-    );
-
-    if (mockup) await logActivity(access.user.username, 'mockups', `Generated ${images.length} mockup image${images.length === 1 ? '' : 's'}`);
-    return NextResponse.json({ images });
+    if (mockup) {
+      await logActivity(
+        access.user.username,
+        'mockups',
+        `Generated ${images.length} Flux mockup image${images.length === 1 ? '' : 's'}`,
+      );
+    }
+    return NextResponse.json({ images, provider: 'cloudflare-flux-2-dev' });
   } catch (reason) {
-    const message = reason instanceof Error ? reason.message : 'Could not save the generated images.';
+    if (reason instanceof DOMException && reason.name === 'AbortError') {
+      return NextResponse.json({ error: 'Stopped.' }, { status: 499 });
+    }
+    const message = reason instanceof Error ? reason.message : 'Image generation failed.';
     return NextResponse.json({ error: message }, { status: 502 });
   }
 }

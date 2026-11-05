@@ -2,14 +2,14 @@
 
 Private studio for Etsy product work: remove AI watermarks in the browser, generate mockups with Grok, write listing SEO, and pull a main keyword from a product thumbnail.
 
-Sign-in is required. Watermark removal stays on the device. Auto-rename, listing SEO, and Keywords use the free Groq vision model. Mockups call the xAI Grok API and are billed to that account.
+Sign-in is required. Watermark removal stays on the device. Auto-rename, listing SEO, Keywords, and mockup photo reading use Groq vision. Mockups are generated with Cloudflare Workers AI Flux 2 Dev (`@cf/black-forest-labs/flux-2-dev`) using the product photo as a reference image.
 
 ## Tools
 
 | Tool | Path | What it does |
 | --- | --- | --- |
 | Watermark | `/` | Inspects C2PA Content Credentials, DALL·E provenance, EXIF, and XMP, then saves a metadata-free copy. The image is not uploaded. |
-| Mockups | `/create` | Places a product photo into 1–6 background photos and generates 6 Etsy mockups with Grok Imagine. |
+| Mockups | `/create` | Reads a product photo and generates 6 lifestyle mockups with Cloudflare Flux 2 Dev, keeping the product from the reference image. |
 | SEO | `/seo` | Reads a clear product photo plus competitor titles, descriptions, and tags. Groq returns a title (121–139 characters), a description, and up to 13 tags. An optional shop name is written into the description. Start with one competitor and use **Add competitor** for more, up to 8. |
 | Keywords | `/keywords` | Analyzes a product thumbnail only and returns the main search keyword plus a few related keywords. |
 | Admin | `/admin` | Admins add and disable users, reset passwords, turn tools on or off, and review sign-in and tool activity. The account from `AUTH_USERNAME` is the first admin. |
@@ -24,11 +24,12 @@ Copy `.env.example` to `.env.local` and set:
 AUTH_SECRET=
 AUTH_USERNAME=
 AUTH_PASSWORD=
-XAI_API_KEY=
 GROQ_API_KEY=
+CLOUDFLARE_ACCOUNT_ID=
+CLOUDFLARE_API_TOKEN=
 ```
 
-`AUTH_SECRET` should be a long random string. `XAI_API_KEY` is required for Mockups. Get it from the [xAI console](https://console.x.ai/). `GROQ_API_KEY` powers free auto-rename, listing SEO, and Keywords via Groq vision (`qwen/qwen3.8-27b`); get keys from the [Groq console](https://console.groq.com/keys), or save keys in Admin → Settings. Multiple keys are supported as a comma-separated list and rotate on rate limits.
+`AUTH_SECRET` should be a long random string. `GROQ_API_KEY` powers auto-rename, listing SEO, Keywords, and mockup photo reading via Groq vision (`qwen/qwen3.8-27b`); get keys from the [Groq console](https://console.groq.com/keys), or save keys in Admin → Settings. `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_API_TOKEN` power Flux mockups via [Workers AI REST API](https://developers.cloudflare.com/workers-ai/get-started/rest-api/), or save them in Admin → Settings.
 
 ```bash
 npm run dev
@@ -48,9 +49,8 @@ npm run start
 - Next.js 15 (App Router) and React 19
 - Tailwind CSS v4
 - `@contentauth/c2pa-web` for local C2PA inspection
-- Groq (`qwen/qwen3.8-27b`) for listing SEO and auto filename
-- Grok (`grok-4`) for mockup planning
-- Grok Imagine for mockup images
+- Groq (`qwen/qwen3.8-27b`) for listing SEO, Keywords, auto filename, and mockup photo reading
+- Cloudflare Workers AI Flux 2 Dev for product-reference mockup images
 
 ## License
 

@@ -3,8 +3,6 @@
 import { useRef, useState } from 'react';
 import { Check, Download, ImagePlus, Loader2, Pencil, Sparkles, Square, X } from 'lucide-react';
 
-const MAX_BACKGROUNDS = 6;
-
 type GeneratedImage = {
   id: string;
   label: string;
@@ -115,7 +113,7 @@ function SourceSlot({
       <span className="text-xs font-semibold text-zinc-800">{label}</span>
       {image ? (
         <div className="relative mt-2 overflow-hidden rounded-xl border border-zinc-200 bg-zinc-50">
-          <img src={image.dataUrl} alt={label} className="h-28 w-full object-contain" />
+          <img src={image.dataUrl} alt={label} className="h-44 w-full object-contain" />
           <button
             type="button"
             onClick={onClear}
@@ -128,7 +126,7 @@ function SourceSlot({
           <p className="truncate px-2 py-1.5 text-[11px] text-zinc-500">{image.name}</p>
         </div>
       ) : (
-        <label className="mt-2 flex h-28 cursor-pointer flex-col items-center justify-center rounded-xl border border-dashed border-zinc-300 bg-zinc-50 px-3 text-center hover:border-emerald-500">
+        <label className="mt-2 flex h-44 cursor-pointer flex-col items-center justify-center rounded-xl border border-dashed border-zinc-300 bg-zinc-50 px-3 text-center hover:border-emerald-500">
           <ImagePlus size={16} className="text-zinc-500" />
           <span className="mt-1.5 text-[11px] leading-snug text-zinc-500">{hint}</span>
           <input
@@ -149,9 +147,8 @@ function SourceSlot({
 }
 
 export function BulkCreator() {
-  const [quality, setQuality] = useState<'auto' | 'low' | 'medium'>('auto');
+  const [quality, setQuality] = useState<'auto' | 'low' | 'medium' | 'high'>('high');
   const [productImage, setProductImage] = useState<SourceImage | null>(null);
-  const [backgrounds, setBackgrounds] = useState<SourceImage[]>([]);
   const [images, setImages] = useState<GeneratedImage[]>([]);
   const [status, setStatus] = useState('');
   const [error, setError] = useState('');
@@ -174,36 +171,13 @@ export function BulkCreator() {
     abortRef.current?.abort();
   };
 
-  const chooseImage = async (file: File, setImage: (image: SourceImage | null) => void) => {
+  const chooseImage = async (file: File) => {
     setError('');
     try {
-      setImage(await readSourceImage(file));
+      setProductImage(await readSourceImage(file));
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Could not read that image.');
     }
-  };
-
-  const addBackgrounds = async (files: File[]) => {
-    setError('');
-    const room = MAX_BACKGROUNDS - backgrounds.length;
-    if (room <= 0) {
-      setError(`Use up to ${MAX_BACKGROUNDS} background photos.`);
-      return;
-    }
-
-    const next = [...backgrounds];
-    for (const file of files.slice(0, room)) {
-      try {
-        next.push(await readSourceImage(file));
-      } catch (reason) {
-        setError(reason instanceof Error ? reason.message : 'Could not read that image.');
-        break;
-      }
-    }
-    if (files.length > room) {
-      setError(`Only the first ${MAX_BACKGROUNDS} background photos are used.`);
-    }
-    setBackgrounds(next);
   };
 
   const generate = async () => {
@@ -211,16 +185,12 @@ export function BulkCreator() {
       setError('Upload the main product photo.');
       return;
     }
-    if (!backgrounds.length) {
-      setError('Upload at least one background photo.');
-      return;
-    }
 
     const controller = new AbortController();
     abortRef.current = controller;
     setBusy(true);
     setError('');
-    setStatus('Looking at the product and backgrounds');
+    setStatus('Reading the product photo');
     const nextImages: GeneratedImage[] = [];
 
     try {
@@ -230,22 +200,20 @@ export function BulkCreator() {
         signal: controller.signal,
         body: JSON.stringify({
           productImage: productImage.dataUrl,
-          backgroundImages: backgrounds.map((image) => image.dataUrl),
         }),
       });
       const plan = (await planResponse.json()) as {
         error?: string;
-        jobs?: { backgroundIndex: number; prompt: string }[];
+        jobs?: { index: number; label: string; prompt: string }[];
       };
       if (!planResponse.ok || !plan.jobs?.length) {
-        throw new Error(plan.error || 'Could not read the photos.');
+        throw new Error(plan.error || 'Could not read the product photo.');
       }
 
       for (let index = 0; index < plan.jobs.length; index += 1) {
         if (controller.signal.aborted) break;
         const job = plan.jobs[index];
-        const background = backgrounds[job.backgroundIndex] ?? backgrounds[0];
-        setStatus('Generating');
+        setStatus(`Generating mockup ${index + 1}/${plan.jobs.length}`);
 
         const response = await fetch('/api/images', {
           method: 'POST',
@@ -255,11 +223,8 @@ export function BulkCreator() {
             mode: 'mockup',
             prompt: job.prompt,
             n: 1,
-            aspectRatio: '1:1',
-            resolution: '2k',
             quality,
             productImage: productImage.dataUrl,
-            referenceImage: background.dataUrl,
           }),
         });
 
@@ -273,11 +238,11 @@ export function BulkCreator() {
         }
 
         const image = payload.images?.[0];
-        if (!image) throw new Error('Grok returned no images.');
+        if (!image) throw new Error('Flux returned no images.');
         const sequence = String(index + 1).padStart(2, '0');
         nextImages.push({
           id: `${index}-${sequence}`,
-          label: `Mockup ${index + 1} · ${background.name}`,
+          label: job.label || `Mockup ${index + 1}`,
           src: `data:${image.mime};base64,${image.b64}`,
           name: `etsy-mockup-${sequence}.${extensionFor(image.mime)}`,
         });
@@ -304,7 +269,7 @@ export function BulkCreator() {
           Etsy Mockups
         </h1>
         <p className="mt-2 text-sm text-zinc-500">
-          Upload the product photo and the background photos. The tool reads both and makes the mockups.
+          Upload the product photo. Flux 2 Dev keeps that product as the reference and builds sharper lifestyle mockups.
         </p>
       </section>
 
@@ -315,67 +280,24 @@ export function BulkCreator() {
             hint="Upload the main product image"
             image={productImage}
             disabled={busy}
-            onChange={(file) => chooseImage(file, setProductImage)}
+            onChange={(file) => void chooseImage(file)}
             onClear={() => setProductImage(null)}
           />
-
-          <div className="mt-5">
-            <div className="flex items-center justify-between gap-3">
-              <span className="text-xs font-semibold text-zinc-800">Background photos</span>
-              <span className="text-[11px] text-zinc-500">
-                {backgrounds.length}/{MAX_BACKGROUNDS}
-              </span>
-            </div>
-            <div className="mt-2 grid grid-cols-3 gap-2">
-              {backgrounds.map((image, index) => (
-                <div key={`${image.name}-${index}`} className="relative overflow-hidden rounded-xl border border-zinc-200 bg-zinc-50">
-                  <img src={image.dataUrl} alt={image.name} className="h-20 w-full object-cover" />
-                  <button
-                    type="button"
-                    onClick={() => setBackgrounds((current) => current.filter((_, item) => item !== index))}
-                    disabled={busy}
-                    aria-label={`Remove ${image.name}`}
-                    className="absolute right-1.5 top-1.5 rounded-lg bg-white/95 p-1 text-zinc-700 shadow-sm hover:bg-white disabled:opacity-60"
-                  >
-                    <X size={12} />
-                  </button>
-                </div>
-              ))}
-              {backgrounds.length < MAX_BACKGROUNDS && (
-                <label className="flex h-28 cursor-pointer flex-col items-center justify-center rounded-xl border border-dashed border-zinc-300 bg-zinc-50 px-2 text-center hover:border-emerald-500">
-                  <ImagePlus size={15} className="text-zinc-500" />
-                  <span className="mt-1 text-[11px] leading-snug text-zinc-500">Add backgrounds</span>
-                  <input
-                    type="file"
-                    accept="image/png,image/jpeg,image/webp"
-                    multiple
-                    disabled={busy}
-                    className="sr-only"
-                    onChange={(event) => {
-                      const files = Array.from(event.target.files ?? []);
-                      event.target.value = '';
-                      if (files.length) void addBackgrounds(files);
-                    }}
-                  />
-                </label>
-              )}
-            </div>
-            <p className="mt-1.5 text-[11px] text-zinc-500">
-              The product is placed into these photos. The background is not swapped for a new scene.
-            </p>
-          </div>
 
           <div className="mt-5">
             <label className="block">
               <span className="text-xs font-semibold text-zinc-800">Quality</span>
               <select
                 value={quality}
-                onChange={(event) => setQuality(event.target.value as 'auto' | 'low' | 'medium')}
+                onChange={(event) =>
+                  setQuality(event.target.value as 'auto' | 'low' | 'medium' | 'high')
+                }
                 className="mt-2 w-full rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm outline-none focus:border-emerald-500"
               >
-                <option value="auto">Auto</option>
-                <option value="low">Low</option>
-                <option value="medium">Medium</option>
+                <option value="high">High (1536px, best)</option>
+                <option value="medium">Medium (1280px)</option>
+                <option value="auto">Auto (1408px)</option>
+                <option value="low">Low (faster)</option>
               </select>
             </label>
           </div>
@@ -408,7 +330,7 @@ export function BulkCreator() {
             )}
           </div>
           <p className="mt-3 text-[11px] text-zinc-500">
-            {status || 'Add the product photo and at least one background.'}
+            {status || 'Add the product photo, then generate 6 mockups.'}
           </p>
         </div>
 
