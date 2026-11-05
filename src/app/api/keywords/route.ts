@@ -1,9 +1,9 @@
 import { NextResponse } from 'next/server';
 import { authorizeTool } from '@/lib/access';
-import { getGroqApiKeys, groqChat } from '@/lib/groq';
+import { cloudflareAiConfigured, cloudflareChat } from '@/lib/cloudflare-ai';
 import { logActivity } from '@/lib/store';
 
-export const maxDuration = 30;
+export const maxDuration = 60;
 
 const DATA_URL = /^data:(image\/(?:png|jpeg|webp));base64,([A-Za-z0-9+/=\s]+)$/;
 
@@ -48,7 +48,10 @@ function parseKeywords(text: string) {
       ? payload.keywords
           .map(cleanPhrase)
           .filter(Boolean)
-          .filter((item, index, list) => list.findIndex((row) => row.toLowerCase() === item.toLowerCase()) === index)
+          .filter(
+            (item, index, list) =>
+              list.findIndex((row) => row.toLowerCase() === item.toLowerCase()) === index,
+          )
           .filter((item) => item.toLowerCase() !== main.toLowerCase())
           .slice(0, 5)
       : [];
@@ -63,10 +66,11 @@ export async function POST(request: Request) {
   const access = await authorizeTool(request, 'keywords');
   if (access.response) return access.response;
 
-  if (!(await getGroqApiKeys()).length) {
+  if (!(await cloudflareAiConfigured())) {
     return NextResponse.json(
       {
-        error: 'Add a Groq API key in Admin → Settings. Free key: https://console.groq.com/keys',
+        error:
+          'Add Cloudflare Account ID and Workers AI API token in Admin → Settings for Keywords.',
       },
       { status: 500 },
     );
@@ -82,7 +86,7 @@ export async function POST(request: Request) {
   }
 
   try {
-    const text = await groqChat(
+    const text = await cloudflareChat(
       {
         temperature: 0.1,
         max_completion_tokens: 120,
@@ -113,7 +117,10 @@ export async function POST(request: Request) {
 
     const result = parseKeywords(text);
     if (!result) {
-      return NextResponse.json({ error: 'Could not read a keyword from that thumbnail. Try again.' }, { status: 502 });
+      return NextResponse.json(
+        { error: 'Could not read a keyword from that thumbnail. Try again.' },
+        { status: 502 },
+      );
     }
 
     await logActivity(access.user.username, 'keywords', `Found ${result.keyword}`);

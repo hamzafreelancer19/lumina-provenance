@@ -696,7 +696,9 @@ function SettingsSection({
             if (!response.ok) throw new Error(await readError(response));
             setCfAccountId('');
             setCfApiToken('');
-            onNotice('Cloudflare Workers AI saved. Mockups will use Flux 2 Dev with product reference.');
+            onNotice(
+              'Cloudflare Workers AI saved. SEO, Keywords, and Flux mockups will use it now.',
+            );
             await onChange();
           } catch (reason) {
             onError(reason instanceof Error ? reason.message : 'Could not save Cloudflare credentials.');
@@ -709,8 +711,8 @@ function SettingsSection({
           <h2 className="font-display text-lg font-extrabold">Cloudflare Workers AI</h2>
           <p className="mt-1 text-sm text-zinc-500">
             {cloudflare.configured
-              ? `Active ${cloudflare.hint}${cloudflare.source === 'environment' ? ' from the server environment' : ''}. Used for Flux 2 Dev product-reference mockups.`
-              : 'Needed for mockups. Create a Workers AI API token in the Cloudflare dashboard, then paste Account ID and token here.'}
+              ? `Active ${cloudflare.hint}${cloudflare.source === 'environment' ? ' from the server environment' : ''}. Used for SEO, Keywords (Qwen), and Flux 2 Dev mockups.`
+              : 'Needed for SEO, Keywords, and mockups. Create a Workers AI API token in the Cloudflare dashboard, then paste Account ID and token here.'}
           </p>
         </div>
         <Field
@@ -782,7 +784,7 @@ function SettingsSection({
             });
             if (!response.ok) throw new Error(await readError(response));
             setGroqKey('');
-            onNotice('Groq key saved. Auto-rename, SEO, Keywords, and mockup planning will use it now.');
+            onNotice('Groq key saved. Auto-rename and mockup planning will use it now.');
             await onChange();
           } catch (reason) {
             onError(reason instanceof Error ? reason.message : 'Could not save the Groq API key.');
@@ -795,8 +797,8 @@ function SettingsSection({
           <h2 className="font-display text-lg font-extrabold">Groq API key</h2>
           <p className="mt-1 text-sm text-zinc-500">
             {groq.configured
-              ? `Active ${groq.hint}${groq.source === 'environment' ? ' from the server environment' : ''}. Saving replaces the studio key list. Multiple keys: comma-separated.`
-              : 'No key yet. Paste from the Groq console. Auto-rename and listing SEO use it immediately. Multiple keys: comma-separated.'}
+              ? `Active ${groq.hint}${groq.source === 'environment' ? ' from the server environment' : ''}. Used for auto-rename and mockup planning. Multiple keys: comma-separated.`
+              : 'No key yet. Paste from the Groq console. Auto-rename and mockup planning use it. Multiple keys: comma-separated.'}
           </p>
         </div>
         <Field

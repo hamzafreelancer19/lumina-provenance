@@ -17,7 +17,7 @@ export default function KeywordsPage() {
       </div>
       <Footer
         label="Keywords"
-        note="Thumbnail-only keyword extraction powered by Groq vision."
+        note="Thumbnail-only keyword extraction powered by Cloudflare Workers AI (Qwen vision)."
       />
     </div>
   );

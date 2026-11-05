@@ -17,7 +17,7 @@ export default function SeoPage() {
       </div>
       <Footer
         label="Listing SEO"
-        note="Listings are written with Grok and billed to your xAI account."
+        note="Listings are written with Cloudflare Workers AI (Qwen 3.8 27B vision)."
       />
     </div>
   );

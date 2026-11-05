@@ -4,11 +4,84 @@ import { getCloudflareAiCredentials } from '@/lib/store';
 /** Flux 2 Dev: multi-reference mockups with adjustable steps for higher quality. */
 export const FLUX_MOCKUP_MODEL = '@cf/black-forest-labs/flux-2-dev';
 
+/** Same Qwen family as Groq, hosted on Workers AI — vision for SEO and Keywords. */
+export const CLOUDFLARE_VISION_MODEL = '@cf/qwen/qwen3.8-27b';
+
 const DATA_URL = /^data:(image\/(?:png|jpeg|webp));base64,([A-Za-z0-9+/=\s]+)$/;
 
 export async function cloudflareAiConfigured() {
   const credentials = await getCloudflareAiCredentials();
   return Boolean(credentials);
+}
+
+function extractChatText(payload: unknown) {
+  const body = payload as {
+    result?: {
+      response?: string;
+      choices?: { message?: { content?: string | null } }[];
+    };
+    choices?: { message?: { content?: string | null } }[];
+    response?: string;
+  } | null;
+
+  const fromChoices =
+    body?.choices?.[0]?.message?.content ||
+    body?.result?.choices?.[0]?.message?.content ||
+    '';
+  if (fromChoices) return fromChoices;
+
+  const fromResponse = body?.result?.response || body?.response || '';
+  return typeof fromResponse === 'string' ? fromResponse : '';
+}
+
+/**
+ * Chat / vision via Cloudflare Workers AI OpenAI-compatible endpoint.
+ * Accepts the same message body shape as Groq (including image_url parts).
+ */
+export async function cloudflareChat(body: Record<string, unknown>, signal?: AbortSignal) {
+  const credentials = await getCloudflareAiCredentials();
+  if (!credentials) {
+    throw new Error(
+      'Add Cloudflare Account ID and Workers AI API token in Admin → Settings.',
+    );
+  }
+
+  const url = `https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(
+    credentials.accountId,
+  )}/ai/v1/chat/completions`;
+
+  const upstream = await fetch(url, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${credentials.apiToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: CLOUDFLARE_VISION_MODEL,
+      reasoning_effort: 'low',
+      ...body,
+    }),
+    signal,
+  });
+
+  const payload = await upstream.json().catch(() => null);
+  if (!upstream.ok) {
+    const errorBody = payload as {
+      errors?: { message?: string }[];
+      error?: { message?: string };
+    } | null;
+    const message =
+      errorBody?.errors?.map((item) => item.message).filter(Boolean).join(' ') ||
+      errorBody?.error?.message ||
+      `Cloudflare Workers AI failed (${upstream.status}).`;
+    throw new Error(message);
+  }
+
+  const text = extractChatText(payload);
+  if (!text.trim()) {
+    throw new Error('Cloudflare AI returned an empty response.');
+  }
+  return text;
 }
 
 async function referenceBlob(dataUrl: string) {
