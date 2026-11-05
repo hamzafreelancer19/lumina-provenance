@@ -10,6 +10,7 @@ const links = [
   { href: '/', label: 'Watermark', tool: 'watermark' as const },
   { href: '/create', label: 'Mockups', tool: 'mockups' as const },
   { href: '/seo', label: 'SEO', tool: 'seo' as const },
+  { href: '/keywords', label: 'Keywords', tool: 'keywords' as const },
 ];
 
 export function Header() {

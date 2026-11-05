@@ -20,6 +20,7 @@ export async function PATCH(request: Request) {
     watermarkEnabled?: unknown;
     mockupsEnabled?: unknown;
     seoEnabled?: unknown;
+    keywordsEnabled?: unknown;
     registrationEnabled?: unknown;
     maintenanceMode?: unknown;
     xaiApiKey?: unknown;
@@ -63,6 +64,7 @@ export async function PATCH(request: Request) {
       watermarkEnabled: typeof body.watermarkEnabled === 'boolean' ? body.watermarkEnabled : undefined,
       mockupsEnabled: typeof body.mockupsEnabled === 'boolean' ? body.mockupsEnabled : undefined,
       seoEnabled: typeof body.seoEnabled === 'boolean' ? body.seoEnabled : undefined,
+      keywordsEnabled: typeof body.keywordsEnabled === 'boolean' ? body.keywordsEnabled : undefined,
       registrationEnabled: typeof body.registrationEnabled === 'boolean' ? body.registrationEnabled : undefined,
       maintenanceMode: typeof body.maintenanceMode === 'boolean' ? body.maintenanceMode : undefined,
     });

@@ -12,6 +12,7 @@ export async function GET() {
       watermark: settings.watermarkEnabled,
       mockups: settings.mockupsEnabled,
       seo: settings.seoEnabled,
+      keywords: settings.keywordsEnabled !== false,
     },
   });
 }

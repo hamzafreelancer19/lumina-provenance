@@ -19,6 +19,7 @@ type UserTools = {
   watermark: boolean;
   mockups: boolean;
   seo: boolean;
+  keywords: boolean;
 };
 
 type PublicUser = {
@@ -36,12 +37,14 @@ const defaultTools = (): UserTools => ({
   watermark: true,
   mockups: true,
   seo: true,
+  keywords: true,
 });
 
 const toolLabels: { id: keyof UserTools; label: string }[] = [
   { id: 'watermark', label: 'Watermark' },
   { id: 'mockups', label: 'Mockups' },
   { id: 'seo', label: 'Listing SEO' },
+  { id: 'keywords', label: 'Keywords' },
 ];
 
 type Activity = {
@@ -57,6 +60,7 @@ type StudioSettings = {
   watermarkEnabled: boolean;
   mockupsEnabled: boolean;
   seoEnabled: boolean;
+  keywordsEnabled: boolean;
   registrationEnabled: boolean;
   maintenanceMode: boolean;
 };
@@ -81,6 +85,7 @@ type Overview = {
     watermark: number;
     mockups: number;
     seo: number;
+    keywords: number;
   };
   xai: ApiKeyStatus;
   groq: ApiKeyStatus;
@@ -99,6 +104,7 @@ const actionLabel: Record<string, string> = {
   watermark: 'Watermark',
   mockups: 'Mockups',
   seo: 'SEO',
+  keywords: 'Keywords',
   register: 'Registered',
   'user.create': 'User added',
   'user.update': 'User updated',
@@ -229,6 +235,7 @@ function OverviewSection({ data }: { data: Overview }) {
     { label: 'Watermark', value: data.stats.watermark, note: 'Cleans logged' },
     { label: 'Mockups', value: data.stats.mockups, note: 'Image calls' },
     { label: 'SEO', value: data.stats.seo, note: 'Listings written' },
+    { label: 'Keywords', value: data.stats.keywords, note: 'Thumbnail reads' },
   ];
 
   return (
@@ -624,10 +631,15 @@ function SettingsSection({
     }
   }
 
-  const pages: { key: 'watermarkEnabled' | 'mockupsEnabled' | 'seoEnabled'; label: string; note: string }[] = [
+  const pages: {
+    key: 'watermarkEnabled' | 'mockupsEnabled' | 'seoEnabled' | 'keywordsEnabled';
+    label: string;
+    note: string;
+  }[] = [
     { key: 'watermarkEnabled', label: 'Watermark', note: 'Shown in the member menu. Untick to hide it immediately.' },
     { key: 'mockupsEnabled', label: 'Mockups', note: 'Shown in the member menu. Untick to hide it immediately.' },
     { key: 'seoEnabled', label: 'SEO', note: 'Shown in the member menu. Untick to hide it immediately.' },
+    { key: 'keywordsEnabled', label: 'Keywords', note: 'Shown in the member menu. Untick to hide it immediately.' },
   ];
 
   async function saveFlag(patch: Partial<StudioSettings>) {

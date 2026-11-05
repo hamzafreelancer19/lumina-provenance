@@ -11,6 +11,7 @@ export type UserTools = {
   watermark: boolean;
   mockups: boolean;
   seo: boolean;
+  keywords: boolean;
 };
 
 export type StudioUser = {
@@ -38,6 +39,7 @@ export type Settings = {
   watermarkEnabled: boolean;
   mockupsEnabled: boolean;
   seoEnabled: boolean;
+  keywordsEnabled: boolean;
   registrationEnabled: boolean;
   maintenanceMode: boolean;
   xaiApiKey?: string;
@@ -50,6 +52,7 @@ export type PublicSettings = {
   watermarkEnabled: boolean;
   mockupsEnabled: boolean;
   seoEnabled: boolean;
+  keywordsEnabled: boolean;
   registrationEnabled: boolean;
   maintenanceMode: boolean;
 };
@@ -76,7 +79,7 @@ const USERNAME = /^[a-zA-Z0-9._-]{3,32}$/;
 const ACTIVITY_LIMIT = 200;
 
 export function defaultUserTools(): UserTools {
-  return { watermark: true, mockups: true, seo: true };
+  return { watermark: true, mockups: true, seo: true, keywords: true };
 }
 
 export function normalizeUserTools(value: unknown): UserTools {
@@ -86,6 +89,7 @@ export function normalizeUserTools(value: unknown): UserTools {
     watermark: raw.watermark !== false,
     mockups: raw.mockups !== false,
     seo: raw.seo !== false,
+    keywords: raw.keywords !== false,
   };
 }
 
@@ -98,6 +102,7 @@ function readUserTools(value: unknown): UserTools {
     watermark: raw.watermark === true,
     mockups: raw.mockups === true,
     seo: raw.seo === true,
+    keywords: raw.keywords === true,
   };
 }
 
@@ -112,6 +117,7 @@ function defaultSettings(): Settings {
     watermarkEnabled: true,
     mockupsEnabled: true,
     seoEnabled: true,
+    keywordsEnabled: true,
     registrationEnabled: true,
     maintenanceMode: false,
   };
@@ -506,6 +512,7 @@ function publicSettings(settings: Settings): PublicSettings {
     watermarkEnabled: settings.watermarkEnabled,
     mockupsEnabled: settings.mockupsEnabled,
     seoEnabled: settings.seoEnabled,
+    keywordsEnabled: settings.keywordsEnabled !== false,
     registrationEnabled: settings.registrationEnabled !== false,
     maintenanceMode: settings.maintenanceMode === true,
   };
@@ -577,6 +584,7 @@ export function saveSettings(patch: Partial<PublicSettings>) {
     if (typeof patch.watermarkEnabled === 'boolean') store.settings.watermarkEnabled = patch.watermarkEnabled;
     if (typeof patch.mockupsEnabled === 'boolean') store.settings.mockupsEnabled = patch.mockupsEnabled;
     if (typeof patch.seoEnabled === 'boolean') store.settings.seoEnabled = patch.seoEnabled;
+    if (typeof patch.keywordsEnabled === 'boolean') store.settings.keywordsEnabled = patch.keywordsEnabled;
     if (typeof patch.registrationEnabled === 'boolean') store.settings.registrationEnabled = patch.registrationEnabled;
     if (typeof patch.maintenanceMode === 'boolean') store.settings.maintenanceMode = patch.maintenanceMode;
     return publicSettings(store.settings);
@@ -653,6 +661,7 @@ export function overview() {
         watermark: count('watermark'),
         mockups: count('mockups'),
         seo: count('seo'),
+        keywords: count('keywords'),
       },
       xai: apiKeyStatus(store.settings),
       groq: groqApiKeyStatus(store.settings),

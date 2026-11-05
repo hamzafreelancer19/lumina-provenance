@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { sessionFromRequest, type SessionPayload } from '@/lib/auth';
 import { findUser, getSettings, type PublicUser } from '@/lib/store';
 
+export type StudioTool = 'watermark' | 'mockups' | 'seo' | 'keywords';
+
 export async function requireUser(request: Request): Promise<
   | { user: PublicUser; session: SessionPayload; response?: undefined }
   | { user?: undefined; session?: undefined; response: NextResponse }
@@ -32,7 +34,7 @@ export async function requireAdmin(request: Request) {
   return result;
 }
 
-export async function authorizeTool(request: Request, tool: 'watermark' | 'mockups' | 'seo') {
+export async function authorizeTool(request: Request, tool: StudioTool) {
   const result = await requireUser(request);
   if (result.response) return result;
   if (result.user.role === 'admin') return result;
@@ -43,12 +45,16 @@ export async function authorizeTool(request: Request, tool: 'watermark' | 'mocku
       response: NextResponse.json({ error: 'The studio is under maintenance.' }, { status: 403 }),
     };
   }
+
   const studioEnabled =
     tool === 'watermark'
       ? settings.watermarkEnabled
       : tool === 'mockups'
         ? settings.mockupsEnabled
-        : settings.seoEnabled;
+        : tool === 'seo'
+          ? settings.seoEnabled
+          : settings.keywordsEnabled;
+
   if (!studioEnabled) {
     return {
       response: NextResponse.json({ error: 'This tool is turned off by an admin.' }, { status: 403 }),

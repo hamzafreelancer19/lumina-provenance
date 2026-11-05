@@ -10,6 +10,7 @@ export type StudioTools = {
   watermark: boolean;
   mockups: boolean;
   seo: boolean;
+  keywords: boolean;
 };
 
 type StudioState = {
@@ -19,7 +20,12 @@ type StudioState = {
   tools: StudioTools;
 };
 
-const defaultTools: StudioTools = { watermark: true, mockups: true, seo: true };
+const defaultTools: StudioTools = {
+  watermark: true,
+  mockups: true,
+  seo: true,
+  keywords: true,
+};
 
 const StudioContext = createContext<StudioState>({
   ready: false,
@@ -36,6 +42,7 @@ const toolRoutes = [
   { href: '/', key: 'watermark' as const },
   { href: '/create', key: 'mockups' as const },
   { href: '/seo', key: 'seo' as const },
+  { href: '/keywords', key: 'keywords' as const },
 ];
 
 function isAuthPath(pathname: string) {
@@ -78,6 +85,7 @@ export function StudioGate({ children }: { children: React.ReactNode }) {
                 watermark: data.tools?.watermark !== false,
                 mockups: data.tools?.mockups !== false,
                 seo: data.tools?.seo !== false,
+                keywords: data.tools?.keywords !== false,
               },
             });
             return;
@@ -107,6 +115,7 @@ export function StudioGate({ children }: { children: React.ReactNode }) {
             watermark: data.tools?.watermark !== false,
             mockups: data.tools?.mockups !== false,
             seo: data.tools?.seo !== false,
+            keywords: data.tools?.keywords !== false,
           },
         });
       } catch {

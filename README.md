@@ -1,8 +1,8 @@
 # Lumina Studio
 
-Private studio for Etsy product work: remove AI watermarks in the browser, generate mockups with Grok, and write listing SEO from a product photo and competitor listings.
+Private studio for Etsy product work: remove AI watermarks in the browser, generate mockups with Grok, write listing SEO, and pull a main keyword from a product thumbnail.
 
-Sign-in is required. Watermark removal stays on the device. Auto-rename and listing SEO use the free Groq vision model. Mockups call the xAI Grok API and are billed to that account.
+Sign-in is required. Watermark removal stays on the device. Auto-rename, listing SEO, and Keywords use the free Groq vision model. Mockups call the xAI Grok API and are billed to that account.
 
 ## Tools
 
@@ -11,6 +11,7 @@ Sign-in is required. Watermark removal stays on the device. Auto-rename and list
 | Watermark | `/` | Inspects C2PA Content Credentials, DALL·E provenance, EXIF, and XMP, then saves a metadata-free copy. The image is not uploaded. |
 | Mockups | `/create` | Places a product photo into 1–6 background photos and generates 6 Etsy mockups with Grok Imagine. |
 | SEO | `/seo` | Reads a clear product photo plus competitor titles, descriptions, and tags. Groq returns a title (121–139 characters), a description, and up to 13 tags. An optional shop name is written into the description. Start with one competitor and use **Add competitor** for more, up to 8. |
+| Keywords | `/keywords` | Analyzes a product thumbnail only and returns the main search keyword plus a few related keywords. |
 | Admin | `/admin` | Admins add and disable users, reset passwords, turn tools on or off, and review sign-in and tool activity. The account from `AUTH_USERNAME` is the first admin. |
 
 ## Setup
@@ -27,7 +28,7 @@ XAI_API_KEY=
 GROQ_API_KEY=
 ```
 
-`AUTH_SECRET` should be a long random string. `XAI_API_KEY` is required for Mockups. Get it from the [xAI console](https://console.x.ai/). `GROQ_API_KEY` powers free auto-rename and listing SEO via Groq vision (`qwen/qwen3.8-27b`); get keys from the [Groq console](https://console.groq.com/keys). Multiple keys are supported as a comma-separated list and rotate on rate limits.
+`AUTH_SECRET` should be a long random string. `XAI_API_KEY` is required for Mockups. Get it from the [xAI console](https://console.x.ai/). `GROQ_API_KEY` powers free auto-rename, listing SEO, and Keywords via Groq vision (`qwen/qwen3.8-27b`); get keys from the [Groq console](https://console.groq.com/keys), or save keys in Admin → Settings. Multiple keys are supported as a comma-separated list and rotate on rate limits.
 
 ```bash
 npm run dev

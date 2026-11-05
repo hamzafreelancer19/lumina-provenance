@@ -22,6 +22,7 @@ export async function GET(request: Request) {
       watermark: isAdmin || (settings.watermarkEnabled && userTools.watermark),
       mockups: isAdmin || (settings.mockupsEnabled && userTools.mockups),
       seo: isAdmin || (settings.seoEnabled && userTools.seo),
+      keywords: isAdmin || (settings.keywordsEnabled !== false && userTools.keywords),
     },
   });
 }
