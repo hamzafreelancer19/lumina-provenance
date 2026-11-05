@@ -41,6 +41,8 @@ export type Settings = {
   registrationEnabled: boolean;
   maintenanceMode: boolean;
   xaiApiKey?: string;
+  /** One or more Groq keys, comma-separated. */
+  groqApiKey?: string;
 };
 
 export type PublicSettings = {
@@ -137,8 +139,16 @@ function absorb(base: Store, extra: Store | null): Store {
   const deleted = new Set([...(base.deletedUsers || []), ...(extra.deletedUsers || [])]);
   const extraWins = (extra.revision || 0) >= (base.revision || 0);
   const settings = extraWins
-    ? { ...extra.settings, xaiApiKey: extra.settings.xaiApiKey || base.settings.xaiApiKey }
-    : { ...base.settings, xaiApiKey: base.settings.xaiApiKey || extra.settings.xaiApiKey };
+    ? {
+        ...extra.settings,
+        xaiApiKey: extra.settings.xaiApiKey || base.settings.xaiApiKey,
+        groqApiKey: extra.settings.groqApiKey || base.settings.groqApiKey,
+      }
+    : {
+        ...base.settings,
+        xaiApiKey: base.settings.xaiApiKey || extra.settings.xaiApiKey,
+        groqApiKey: base.settings.groqApiKey || extra.settings.groqApiKey,
+      };
   const map = new Map<string, StudioUser>();
   for (const user of [...(extraWins ? base.users : extra.users), ...(extraWins ? extra.users : base.users)]) {
     if (deleted.has(user.username.toLowerCase())) continue;
@@ -194,6 +204,7 @@ async function writeDirCookie(store: Store) {
     settings: { ...store.settings },
   };
   delete copy.settings.xaiApiKey;
+  delete copy.settings.groqApiKey;
   const payload = Buffer.from(JSON.stringify(copy)).toString('base64url');
   const signed = signDir(payload);
   if (!signed || signed.length > 3800) return;
@@ -500,6 +511,17 @@ function publicSettings(settings: Settings): PublicSettings {
   };
 }
 
+function parseApiKeys(value: string) {
+  return [
+    ...new Set(
+      value
+        .split(/[\n\r,;|]+/)
+        .map((key) => key.trim())
+        .filter((key) => key.length > 8),
+    ),
+  ];
+}
+
 function apiKeyStatus(settings: Settings): ApiKeyStatus {
   const stored = settings.xaiApiKey?.trim() || '';
   const fromEnv = process.env.XAI_API_KEY?.trim() || '';
@@ -511,12 +533,38 @@ function apiKeyStatus(settings: Settings): ApiKeyStatus {
   };
 }
 
+function groqApiKeyStatus(settings: Settings): ApiKeyStatus {
+  const storedKeys = parseApiKeys(settings.groqApiKey || '');
+  const envKeys = parseApiKeys(
+    [process.env.GROQ_API_KEY, process.env.GROQ_API_KEYS].filter(Boolean).join(','),
+  );
+  const active = storedKeys[0] || envKeys[0] || '';
+  const count = storedKeys.length || envKeys.length;
+  return {
+    configured: Boolean(active),
+    source: storedKeys.length ? 'panel' : envKeys.length ? 'environment' : 'none',
+    hint: active
+      ? `${count > 1 ? `${count} keys · ` : ''}••••${active.slice(-4)}`
+      : '',
+  };
+}
+
 export function getSettings() {
   return updateStore((store) => publicSettings(store.settings));
 }
 
 export function getApiKey() {
   return updateStore((store) => (store.settings.xaiApiKey?.trim() || process.env.XAI_API_KEY?.trim() || ''));
+}
+
+export function getStoredGroqApiKeys() {
+  return updateStore((store) => {
+    const fromPanel = parseApiKeys(store.settings.groqApiKey || '');
+    if (fromPanel.length) return fromPanel;
+    return parseApiKeys(
+      [process.env.GROQ_API_KEY, process.env.GROQ_API_KEYS].filter(Boolean).join(','),
+    );
+  });
 }
 
 export function saveSettings(patch: Partial<PublicSettings>) {
@@ -553,6 +601,27 @@ export function clearApiKey() {
   });
 }
 
+export function saveGroqApiKey(value: string) {
+  const keys = parseApiKeys(value);
+  if (!keys.length) {
+    throw new Error('Paste one or more Groq API keys (comma-separated).');
+  }
+  if (keys.some((key) => key.length > 400) || value.length > 4000) {
+    throw new Error('That Groq API key list is too long.');
+  }
+  return updateStore((store) => {
+    store.settings.groqApiKey = keys.join(',');
+    return groqApiKeyStatus(store.settings);
+  });
+}
+
+export function clearGroqApiKey() {
+  return updateStore((store) => {
+    delete store.settings.groqApiKey;
+    return groqApiKeyStatus(store.settings);
+  });
+}
+
 export function logActivity(username: string, action: string, detail: string) {
   return updateStore((store) => {
     store.activity.unshift({
@@ -586,6 +655,7 @@ export function overview() {
         seo: count('seo'),
       },
       xai: apiKeyStatus(store.settings),
+      groq: groqApiKeyStatus(store.settings),
     };
   });
 }

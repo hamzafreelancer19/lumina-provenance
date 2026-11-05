@@ -63,11 +63,11 @@ export async function POST(request: Request) {
   const access = await authorizeTool(request, 'watermark');
   if (access.response) return access.response;
 
-  if (!getGroqApiKeys().length) {
+  if (!(await getGroqApiKeys()).length) {
     return NextResponse.json(
       {
         error:
-          'Add GROQ_API_KEY to .env.local. Free key: https://console.groq.com/keys',
+          'Add a Groq API key in Admin → Settings. Free key: https://console.groq.com/keys',
       },
       { status: 503 },
     );

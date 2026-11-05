@@ -203,10 +203,10 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'The request could not be read.' }, { status: 400 });
   }
 
-  if (!getGroqApiKeys().length) {
+  if (!(await getGroqApiKeys()).length) {
     return NextResponse.json(
       {
-        error: 'Add GROQ_API_KEY to .env.local. Free key: https://console.groq.com/keys',
+        error: 'Add a Groq API key in Admin → Settings. Free key: https://console.groq.com/keys',
       },
       { status: 500 },
     );

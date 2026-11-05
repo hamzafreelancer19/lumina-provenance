@@ -83,6 +83,7 @@ type Overview = {
     seo: number;
   };
   xai: ApiKeyStatus;
+  groq: ApiKeyStatus;
 };
 
 const nav: { id: Section; label: string; icon: typeof LayoutDashboard }[] = [
@@ -209,6 +210,7 @@ export function AdminPanel() {
           <SettingsSection
             settings={data.settings}
             xai={data.xai}
+            groq={data.groq}
             onChange={refresh}
             onNotice={setNotice}
             onError={setError}
@@ -234,7 +236,9 @@ function OverviewSection({ data }: { data: Overview }) {
       <div>
         <h1 className="font-display text-2xl font-extrabold tracking-tight">Overview</h1>
         <p className="mt-1 text-sm text-zinc-500">
-          Signed in as {data.me.username}. xAI key {data.xai.configured ? `is set (${data.xai.hint})` : 'is missing'}.
+          Signed in as {data.me.username}. Groq{' '}
+          {data.groq.configured ? `is set (${data.groq.hint})` : 'is missing'}; xAI{' '}
+          {data.xai.configured ? `is set (${data.xai.hint})` : 'is missing'}.
         </p>
       </div>
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
@@ -581,20 +585,24 @@ function Field({
 function SettingsSection({
   settings,
   xai,
+  groq,
   onChange,
   onNotice,
   onError,
 }: {
   settings: StudioSettings;
   xai: ApiKeyStatus;
+  groq: ApiKeyStatus;
   onChange: () => Promise<void>;
   onNotice: (value: string) => void;
   onError: (value: string) => void;
 }) {
   const [draft, setDraft] = useState(settings);
   const [apiKey, setApiKey] = useState('');
+  const [groqKey, setGroqKey] = useState('');
   const [pending, setPending] = useState(false);
   const [keyPending, setKeyPending] = useState(false);
+  const [groqPending, setGroqPending] = useState(false);
 
   async function onSubmit(event: FormEvent) {
     event.preventDefault();
@@ -655,6 +663,84 @@ function SettingsSection({
         className="space-y-4 rounded-3xl border border-white bg-white p-5 shadow-sm"
         onSubmit={async (event) => {
           event.preventDefault();
+          setGroqPending(true);
+          onError('');
+          try {
+            const response = await fetch('/api/admin/settings', {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ groqApiKey: groqKey }),
+            });
+            if (!response.ok) throw new Error(await readError(response));
+            setGroqKey('');
+            onNotice('Groq key saved. Auto-rename and SEO will use it now.');
+            await onChange();
+          } catch (reason) {
+            onError(reason instanceof Error ? reason.message : 'Could not save the Groq API key.');
+          } finally {
+            setGroqPending(false);
+          }
+        }}
+      >
+        <div>
+          <h2 className="font-display text-lg font-extrabold">Groq API key</h2>
+          <p className="mt-1 text-sm text-zinc-500">
+            {groq.configured
+              ? `Active ${groq.hint}${groq.source === 'environment' ? ' from the server environment' : ''}. Saving replaces the studio key list. Multiple keys: comma-separated.`
+              : 'No key yet. Paste from the Groq console. Auto-rename and listing SEO use it immediately. Multiple keys: comma-separated.'}
+          </p>
+        </div>
+        <Field
+          label="Groq API key(s)"
+          value={groqKey}
+          onChange={setGroqKey}
+          type="password"
+          required={false}
+          autoComplete="off"
+          placeholder="gsk_... or gsk_key1,gsk_key2"
+        />
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="submit"
+            disabled={groqPending || groqKey.trim().length < 12}
+            className="inline-flex h-10 items-center gap-2 rounded-2xl bg-emerald-600 px-4 text-sm font-semibold text-white disabled:opacity-70"
+          >
+            {groqPending && <Loader2 className="h-4 w-4 animate-spin" />}
+            Save Groq key
+          </button>
+          {groq.source === 'panel' && (
+            <button
+              type="button"
+              disabled={groqPending}
+              onClick={async () => {
+                setGroqPending(true);
+                onError('');
+                try {
+                  const response = await fetch('/api/admin/settings', {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ clearGroqApiKey: true }),
+                  });
+                  if (!response.ok) throw new Error(await readError(response));
+                  onNotice('Saved Groq key removed.');
+                  await onChange();
+                } catch (reason) {
+                  onError(reason instanceof Error ? reason.message : 'Could not remove the Groq API key.');
+                } finally {
+                  setGroqPending(false);
+                }
+              }}
+              className="inline-flex h-10 items-center rounded-2xl border border-zinc-200 px-4 text-sm font-semibold text-zinc-700 disabled:opacity-70"
+            >
+              Remove saved key
+            </button>
+          )}
+        </div>
+      </form>
+      <form
+        className="space-y-4 rounded-3xl border border-white bg-white p-5 shadow-sm"
+        onSubmit={async (event) => {
+          event.preventDefault();
           setKeyPending(true);
           onError('');
           try {
@@ -665,7 +751,7 @@ function SettingsSection({
             });
             if (!response.ok) throw new Error(await readError(response));
             setApiKey('');
-            onNotice('API key saved. Mockups and SEO will use it now.');
+            onNotice('xAI key saved. Mockups will use it now.');
             await onChange();
           } catch (reason) {
             onError(reason instanceof Error ? reason.message : 'Could not save the API key.');
@@ -679,7 +765,7 @@ function SettingsSection({
           <p className="mt-1 text-sm text-zinc-500">
             {xai.configured
               ? `Active key ${xai.hint}${xai.source === 'environment' ? ' from the server environment' : ''}. Saving a new key replaces it for the whole studio.`
-              : 'No key yet. Paste one from the xAI console. Mockups and SEO will use it immediately.'}
+              : 'No key yet. Paste one from the xAI console. Mockups will use it immediately.'}
           </p>
         </div>
         <Field

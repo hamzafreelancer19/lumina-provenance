@@ -1,23 +1,17 @@
+import { getStoredGroqApiKeys } from '@/lib/store';
+
 export const GROQ_VISION_MODEL = 'qwen/qwen3.8-27b';
 
 let roundRobin = 0;
 
-/** Accepts one or many keys from GROQ_API_KEY / GROQ_API_KEYS (comma, space, newline, or ;). */
-export function getGroqApiKeys() {
-  const raw = [process.env.GROQ_API_KEY, process.env.GROQ_API_KEYS]
-    .filter((value): value is string => Boolean(value?.trim()))
-    .join(',');
-
-  const keys = raw
-    .split(/[\n\r,;|]+/)
-    .map((key) => key.trim())
-    .filter((key) => key.length > 8);
-
-  return [...new Set(keys)];
+/** Panel-saved keys first, then GROQ_API_KEY / GROQ_API_KEYS from the environment. */
+export async function getGroqApiKeys() {
+  return getStoredGroqApiKeys();
 }
 
-export function getGroqApiKey() {
-  return getGroqApiKeys()[0] || '';
+export async function getGroqApiKey() {
+  const keys = await getGroqApiKeys();
+  return keys[0] || '';
 }
 
 function isRetryableStatus(status: number) {
@@ -59,9 +53,11 @@ async function callGroq(apiKey: string, body: Record<string, unknown>, signal?: 
  * On rate-limit / auth / server errors, tries the next key.
  */
 export async function groqChat(body: Record<string, unknown>, signal?: AbortSignal) {
-  const keys = getGroqApiKeys();
+  const keys = await getGroqApiKeys();
   if (!keys.length) {
-    throw new Error('Add GROQ_API_KEY to .env.local. Free key: https://console.groq.com/keys');
+    throw new Error(
+      'Add a Groq API key in Admin → Settings, or set GROQ_API_KEY. Free key: https://console.groq.com/keys',
+    );
   }
 
   const start = roundRobin % keys.length;

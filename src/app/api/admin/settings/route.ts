@@ -1,6 +1,13 @@
 import { NextResponse } from 'next/server';
 import { requireAdmin } from '@/lib/access';
-import { clearApiKey, logActivity, saveApiKey, saveSettings } from '@/lib/store';
+import {
+  clearApiKey,
+  clearGroqApiKey,
+  logActivity,
+  saveApiKey,
+  saveGroqApiKey,
+  saveSettings,
+} from '@/lib/store';
 
 export const runtime = 'nodejs';
 
@@ -17,6 +24,8 @@ export async function PATCH(request: Request) {
     maintenanceMode?: unknown;
     xaiApiKey?: unknown;
     clearApiKey?: unknown;
+    groqApiKey?: unknown;
+    clearGroqApiKey?: unknown;
   };
   try {
     body = await request.json();
@@ -31,10 +40,22 @@ export async function PATCH(request: Request) {
       return NextResponse.json({ xai });
     }
 
+    if (body.clearGroqApiKey === true) {
+      const groq = await clearGroqApiKey();
+      await logActivity(result.user.username, 'settings.update', 'Removed the Groq API key');
+      return NextResponse.json({ groq });
+    }
+
     if (typeof body.xaiApiKey === 'string') {
       const xai = await saveApiKey(body.xaiApiKey);
       await logActivity(result.user.username, 'settings.update', 'Saved the xAI API key');
       return NextResponse.json({ xai });
+    }
+
+    if (typeof body.groqApiKey === 'string') {
+      const groq = await saveGroqApiKey(body.groqApiKey);
+      await logActivity(result.user.username, 'settings.update', 'Saved the Groq API key');
+      return NextResponse.json({ groq });
     }
 
     const settings = await saveSettings({
