@@ -7,6 +7,12 @@ import { hashPassword, secretsMatch, verifyPassword } from '@/lib/password';
 
 export type Role = 'admin' | 'member';
 
+export type UserTools = {
+  watermark: boolean;
+  mockups: boolean;
+  seo: boolean;
+};
+
 export type StudioUser = {
   id: string;
   username: string;
@@ -14,6 +20,7 @@ export type StudioUser = {
   passwordHash: string;
   role: Role;
   disabled: boolean;
+  tools: UserTools;
   createdAt: number;
   lastLoginAt: number | null;
 };
@@ -66,6 +73,32 @@ export type PublicUser = Omit<StudioUser, 'passwordHash'>;
 const USERNAME = /^[a-zA-Z0-9._-]{3,32}$/;
 const ACTIVITY_LIMIT = 200;
 
+export function defaultUserTools(): UserTools {
+  return { watermark: true, mockups: true, seo: true };
+}
+
+export function normalizeUserTools(value: unknown): UserTools {
+  if (!value || typeof value !== 'object') return defaultUserTools();
+  const raw = value as Record<string, unknown>;
+  return {
+    watermark: raw.watermark !== false,
+    mockups: raw.mockups !== false,
+    seo: raw.seo !== false,
+  };
+}
+
+function readUserTools(value: unknown): UserTools {
+  if (!value || typeof value !== 'object') {
+    throw new Error('Choose which tools this user can open.');
+  }
+  const raw = value as Record<string, unknown>;
+  return {
+    watermark: raw.watermark === true,
+    mockups: raw.mockups === true,
+    seo: raw.seo === true,
+  };
+}
+
 function filePath() {
   const root = process.env.VERCEL ? '/tmp' : join(process.cwd(), 'data');
   return join(root, 'studio.json');
@@ -88,7 +121,10 @@ function emptyStore(): Store {
 
 function normalize(value: Store): Store {
   return {
-    users: Array.isArray(value.users) ? value.users : [],
+    users: (Array.isArray(value.users) ? value.users : []).map((user) => ({
+      ...user,
+      tools: normalizeUserTools(user.tools),
+    })),
     activity: Array.isArray(value.activity) ? value.activity : [],
     settings: { ...defaultSettings(), ...(value.settings || {}) },
     revision: typeof value.revision === 'number' ? value.revision : 0,
@@ -229,6 +265,7 @@ function addEnvAdmin(store: Store, username: string, password: string, displayNa
     passwordHash: hashPassword(password),
     role: 'admin',
     disabled: false,
+    tools: defaultUserTools(),
     createdAt: Date.now(),
     lastLoginAt: null,
   });
@@ -296,7 +333,7 @@ function updateStore<T>(mutator: (store: Store) => T): Promise<T> {
 
 export function toPublicUser(user: StudioUser): PublicUser {
   const { passwordHash: _passwordHash, ...rest } = user;
-  return rest;
+  return { ...rest, tools: normalizeUserTools(user.tools) };
 }
 
 export function findUser(session: Pick<SessionPayload, 'uid' | 'sub'>) {
@@ -344,6 +381,7 @@ export function createStudioUser(input: {
   displayName: string;
   password: string;
   role: Role;
+  tools?: unknown;
 }) {
   const username = input.username.trim();
   const displayName = input.displayName.trim() || username;
@@ -355,6 +393,8 @@ export function createStudioUser(input: {
     throw new Error('Password must be at least 8 characters.');
   }
   if (input.role !== 'admin' && input.role !== 'member') throw new Error('Choose a valid role.');
+  const tools =
+    input.tools === undefined ? defaultUserTools() : readUserTools(input.tools);
 
   return updateStore((store) => {
     if (store.users.some((user) => user.username.toLowerCase() === username.toLowerCase())) {
@@ -369,6 +409,7 @@ export function createStudioUser(input: {
       passwordHash: hashPassword(input.password),
       role: input.role,
       disabled: false,
+      tools,
       createdAt: now,
       lastLoginAt: null,
     };
@@ -384,11 +425,18 @@ function adminCount(store: Store, exceptId?: string) {
 export function updateStudioUser(
   id: string,
   actorId: string,
-  patch: { displayName?: string; role?: Role; disabled?: boolean; password?: string },
+  patch: {
+    displayName?: string;
+    role?: Role;
+    disabled?: boolean;
+    password?: string;
+    tools?: unknown;
+  },
 ) {
   return updateStore((store) => {
     const user = store.users.find((item) => item.id === id);
     if (!user) throw new Error('User not found.');
+    user.tools = normalizeUserTools(user.tools);
 
     if (typeof patch.displayName === 'string') {
       const displayName = patch.displayName.trim();
@@ -417,6 +465,10 @@ export function updateStudioUser(
         throw new Error('Password must be at least 8 characters.');
       }
       user.passwordHash = hashPassword(patch.password);
+    }
+
+    if (patch.tools !== undefined) {
+      user.tools = readUserTools(patch.tools);
     }
 
     return toPublicUser(user);

@@ -510,7 +510,13 @@ function StudioApp() {
 
           {/* Clean Output Section */}
           {cleaned && audit && (
-            <CleanResultCard cleaned={cleaned} onReset={reset} />
+            <CleanResultCard
+              cleaned={cleaned}
+              onReset={reset}
+              onRename={(name) =>
+                setCleaned((current) => (current ? { ...current, name } : current))
+              }
+            />
           )}
 
           {/* Education & Guides */}

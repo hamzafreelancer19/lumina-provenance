@@ -145,7 +145,7 @@ export function SeoWriter() {
           Listing SEO
         </h1>
         <p className="mt-2 text-sm text-zinc-500">
-          Upload a clear product photo and competitor listings. Grok reads the product and writes a title, description, and tags.
+          Upload a clear product photo and competitor listings. Groq reads the product and writes a title, description, and tags.
         </p>
       </section>
 

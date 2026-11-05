@@ -35,21 +35,28 @@ export async function requireAdmin(request: Request) {
 export async function authorizeTool(request: Request, tool: 'watermark' | 'mockups' | 'seo') {
   const result = await requireUser(request);
   if (result.response) return result;
+  if (result.user.role === 'admin') return result;
+
   const settings = await getSettings();
-  if (settings.maintenanceMode && result.user.role !== 'admin') {
+  if (settings.maintenanceMode) {
     return {
       response: NextResponse.json({ error: 'The studio is under maintenance.' }, { status: 403 }),
     };
   }
-  const enabled =
+  const studioEnabled =
     tool === 'watermark'
       ? settings.watermarkEnabled
       : tool === 'mockups'
         ? settings.mockupsEnabled
         : settings.seoEnabled;
-  if (!enabled && result.user.role !== 'admin') {
+  if (!studioEnabled) {
     return {
       response: NextResponse.json({ error: 'This tool is turned off by an admin.' }, { status: 403 }),
+    };
+  }
+  if (!result.user.tools?.[tool]) {
+    return {
+      response: NextResponse.json({ error: 'You do not have access to this tool.' }, { status: 403 }),
     };
   }
   return result;

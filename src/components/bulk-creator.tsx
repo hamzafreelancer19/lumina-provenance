@@ -1,7 +1,7 @@
 'use client';
 
 import { useRef, useState } from 'react';
-import { Download, ImagePlus, Loader2, Sparkles, Square, X } from 'lucide-react';
+import { Check, Download, ImagePlus, Loader2, Pencil, Sparkles, Square, X } from 'lucide-react';
 
 const MAX_BACKGROUNDS = 6;
 
@@ -31,6 +31,19 @@ function downloadImage(src: string, name: string) {
   link.href = src;
   link.download = name;
   link.click();
+}
+
+function sanitizeDownloadName(value: string, fallback: string) {
+  const extensionMatch = fallback.match(/(\.[a-z0-9]+)$/i);
+  const extension = extensionMatch?.[1] ?? '.png';
+  const withoutExt = value.trim().replace(/\.[^/.]+$/, '');
+  const cleaned = withoutExt
+    .replace(/[<>:"/\\|?*\u0000-\u001f]/g, '')
+    .replace(/\s+/g, ' ')
+    .replace(/[. ]+$/g, '')
+    .slice(0, 120);
+
+  return `${cleaned || 'etsy-mockup'}${extension}`;
 }
 
 function readSourceImage(file: File) {
@@ -143,7 +156,19 @@ export function BulkCreator() {
   const [status, setStatus] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [draftName, setDraftName] = useState('');
   const abortRef = useRef<AbortController | null>(null);
+
+  const renameImage = (id: string, name: string) => {
+    setImages((current) =>
+      current.map((image) =>
+        image.id === id ? { ...image, name: sanitizeDownloadName(name, image.name) } : image,
+      ),
+    );
+    setEditingId(null);
+    setDraftName('');
+  };
 
   const stop = () => {
     abortRef.current?.abort();
@@ -400,16 +425,76 @@ export function BulkCreator() {
               {images.map((image) => (
                 <figure key={image.id} className="overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm">
                   <img src={image.src} alt={image.label} className="aspect-square w-full object-cover" />
-                  <figcaption className="flex items-start justify-between gap-3 p-3">
+                  <figcaption className="space-y-2 p-3">
                     <p className="line-clamp-2 text-xs leading-relaxed text-zinc-600">{image.label}</p>
-                    <button
-                      type="button"
-                      onClick={() => downloadImage(image.src, image.name)}
-                      className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-zinc-200 px-2 py-1 text-[11px] font-semibold text-zinc-700 hover:bg-zinc-50"
-                    >
-                      <Download size={12} />
-                      Save
-                    </button>
+                    {editingId === image.id ? (
+                      <div className="flex items-center gap-1.5">
+                        <input
+                          value={draftName}
+                          onChange={(event) => setDraftName(event.target.value)}
+                          onKeyDown={(event) => {
+                            if (event.key === 'Enter') {
+                              event.preventDefault();
+                              renameImage(image.id, draftName);
+                            }
+                            if (event.key === 'Escape') {
+                              event.preventDefault();
+                              setEditingId(null);
+                              setDraftName('');
+                            }
+                          }}
+                          autoFocus
+                          spellCheck={false}
+                          className="min-w-0 flex-1 rounded-lg border border-zinc-300 px-2 py-1 font-mono text-[11px] text-zinc-800"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => renameImage(image.id, draftName)}
+                          title="Save name"
+                          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-zinc-900 text-white"
+                        >
+                          <Check size={12} />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditingId(null);
+                            setDraftName('');
+                          }}
+                          title="Cancel"
+                          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-zinc-200 text-zinc-500"
+                        >
+                          <X size={12} />
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="min-w-0 truncate font-mono text-[11px] text-zinc-500" title={image.name}>
+                          {image.name}
+                        </p>
+                        <div className="flex shrink-0 items-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditingId(image.id);
+                              setDraftName(image.name);
+                            }}
+                            className="inline-flex items-center gap-1 rounded-lg border border-zinc-200 px-2 py-1 text-[11px] font-semibold text-zinc-700 hover:bg-zinc-50"
+                          >
+                            <Pencil size={12} />
+                            Edit
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => downloadImage(image.src, image.name)}
+                            className="inline-flex items-center gap-1 rounded-lg border border-zinc-200 px-2 py-1 text-[11px] font-semibold text-zinc-700 hover:bg-zinc-50"
+                          >
+                            <Download size={12} />
+                            Save
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </figcaption>
                 </figure>
               ))}

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { authorizeTool } from '@/lib/access';
-import { getApiKey, logActivity } from '@/lib/store';
+import { getGroqApiKeys, groqChat } from '@/lib/groq';
+import { logActivity } from '@/lib/store';
 
 export const maxDuration = 60;
 
@@ -131,27 +132,6 @@ function withShopName(description: string, shopName: string) {
   return `${description}\n\nFrom ${shopName}.`;
 }
 
-async function grok(apiKey: string, body: unknown, signal: AbortSignal) {
-  const upstream = await fetch('https://api.x.ai/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(body),
-    signal,
-  });
-
-  if (!upstream.ok) {
-    throw new Error('Grok could not write the listing. Try again.');
-  }
-
-  const payload = (await upstream.json()) as {
-    choices?: { message?: { content?: string | null } }[];
-  };
-  return payload.choices?.[0]?.message?.content || '';
-}
-
 function listingPrompt(competitors: Competitor[], shopName: string) {
   const listings = competitors
     .map((item, index) =>
@@ -178,14 +158,14 @@ function listingPrompt(competitors: Competitor[], shopName: string) {
   ].join('\n\n');
 }
 
-async function fitTitle(apiKey: string, listing: Listing, signal: AbortSignal) {
+async function fitTitle(listing: Listing, signal: AbortSignal) {
   if (listing.title.length >= TITLE_MIN && listing.title.length <= TITLE_MAX) return listing.title;
 
-  const text = await grok(
-    apiKey,
+  const text = await groqChat(
     {
-      model: 'grok-4',
       temperature: 0,
+      max_completion_tokens: 256,
+      response_format: { type: 'json_object' },
       messages: [
         {
           role: 'system',
@@ -223,10 +203,11 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'The request could not be read.' }, { status: 400 });
   }
 
-  const apiKey = await getApiKey();
-  if (!apiKey) {
+  if (!getGroqApiKeys().length) {
     return NextResponse.json(
-      { error: 'Add an xAI API key in the admin panel.' },
+      {
+        error: 'Add GROQ_API_KEY to .env.local. Free key: https://console.groq.com/keys',
+      },
       { status: 500 },
     );
   }
@@ -244,11 +225,11 @@ export async function POST(request: Request) {
   }
 
   try {
-    const text = await grok(
-      apiKey,
+    const text = await groqChat(
       {
-        model: 'grok-4',
         temperature: 0.4,
+        max_completion_tokens: 2048,
+        response_format: { type: 'json_object' },
         messages: [
           {
             role: 'system',
@@ -259,7 +240,7 @@ export async function POST(request: Request) {
             role: 'user',
             content: [
               { type: 'text', text: listingPrompt(competitors, shopName) },
-              { type: 'image_url', image_url: { url: product, detail: 'high' } },
+              { type: 'image_url', image_url: { url: product } },
             ],
           },
         ],
@@ -269,13 +250,13 @@ export async function POST(request: Request) {
 
     const listing = parseListing(text);
     if (!listing) {
-      return NextResponse.json({ error: 'Grok did not return a usable listing. Try again.' }, { status: 502 });
+      return NextResponse.json({ error: 'Groq did not return a usable listing. Try again.' }, { status: 502 });
     }
 
-    const title = await fitTitle(apiKey, listing, request.signal);
+    const title = await fitTitle(listing, request.signal);
     const tags = uniqueTags(listing.tags);
     if (tags.length < 8) {
-      return NextResponse.json({ error: 'Grok did not return enough tags. Try again.' }, { status: 502 });
+      return NextResponse.json({ error: 'Groq did not return enough tags. Try again.' }, { status: 502 });
     }
 
     await logActivity(access.user.username, 'seo', 'Wrote a listing');

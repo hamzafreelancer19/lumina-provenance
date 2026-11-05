@@ -15,15 +15,34 @@ import {
 type Role = 'admin' | 'member';
 type Section = 'overview' | 'users' | 'activity' | 'settings';
 
+type UserTools = {
+  watermark: boolean;
+  mockups: boolean;
+  seo: boolean;
+};
+
 type PublicUser = {
   id: string;
   username: string;
   displayName: string;
   role: Role;
   disabled: boolean;
+  tools: UserTools;
   createdAt: number;
   lastLoginAt: number | null;
 };
+
+const defaultTools = (): UserTools => ({
+  watermark: true,
+  mockups: true,
+  seo: true,
+});
+
+const toolLabels: { id: keyof UserTools; label: string }[] = [
+  { id: 'watermark', label: 'Watermark' },
+  { id: 'mockups', label: 'Mockups' },
+  { id: 'seo', label: 'Listing SEO' },
+];
 
 type Activity = {
   id: string;
@@ -299,44 +318,54 @@ function UsersSection({
               <tr>
                 <th className="px-4 py-3 font-semibold">User</th>
                 <th className="px-4 py-3 font-semibold">Role</th>
+                <th className="px-4 py-3 font-semibold">Tools</th>
                 <th className="px-4 py-3 font-semibold">Status</th>
                 <th className="px-4 py-3 font-semibold">Last sign-in</th>
                 <th className="px-4 py-3 font-semibold" />
               </tr>
             </thead>
             <tbody>
-              {data.users.map((user) => (
-                <tr key={user.id} className="border-t border-zinc-100">
-                  <td className="px-4 py-3">
-                    <p className="font-semibold">{user.displayName}</p>
-                    <p className="text-xs text-zinc-500">{user.username}</p>
-                  </td>
-                  <td className="px-4 py-3">
-                    <span className="inline-flex items-center gap-1 rounded-full bg-zinc-100 px-2 py-1 text-xs font-semibold text-zinc-700">
-                      {user.role === 'admin' && <Shield className="h-3 w-3" />}
-                      {user.role}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3">
-                    <span className={user.disabled ? 'text-red-600' : 'text-emerald-700'}>
-                      {user.disabled ? 'Disabled' : 'Active'}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-zinc-500">{when(user.lastLoginAt)}</td>
-                  <td className="px-4 py-3 text-right">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setEditing(user);
-                        setOpen(true);
-                      }}
-                      className="rounded-xl px-2 py-1 text-xs font-semibold text-emerald-700 hover:bg-emerald-50"
-                    >
-                      Edit
-                    </button>
-                  </td>
-                </tr>
-              ))}
+              {data.users.map((user) => {
+                const tools = user.tools || defaultTools();
+                const assigned = toolLabels
+                  .filter((tool) => user.role === 'admin' || tools[tool.id])
+                  .map((tool) => tool.label);
+                return (
+                  <tr key={user.id} className="border-t border-zinc-100">
+                    <td className="px-4 py-3">
+                      <p className="font-semibold">{user.displayName}</p>
+                      <p className="text-xs text-zinc-500">{user.username}</p>
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className="inline-flex items-center gap-1 rounded-full bg-zinc-100 px-2 py-1 text-xs font-semibold text-zinc-700">
+                        {user.role === 'admin' && <Shield className="h-3 w-3" />}
+                        {user.role}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-xs text-zinc-600">
+                      {user.role === 'admin' ? 'All tools' : assigned.length ? assigned.join(', ') : 'None'}
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className={user.disabled ? 'text-red-600' : 'text-emerald-700'}>
+                        {user.disabled ? 'Disabled' : 'Active'}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-zinc-500">{when(user.lastLoginAt)}</td>
+                    <td className="px-4 py-3 text-right">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEditing(user);
+                          setOpen(true);
+                        }}
+                        className="rounded-xl px-2 py-1 text-xs font-semibold text-emerald-700 hover:bg-emerald-50"
+                      >
+                        Edit
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -377,6 +406,7 @@ function UserDialog({
   const [password, setPassword] = useState('');
   const [role, setRole] = useState<Role>(user?.role || 'member');
   const [disabled, setDisabled] = useState(user?.disabled || false);
+  const [tools, setTools] = useState<UserTools>(user?.tools || defaultTools());
   const [pending, setPending] = useState(false);
   const isSelf = user?.id === selfId;
 
@@ -390,8 +420,8 @@ function UserDialog({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(
           user
-            ? { id: user.id, displayName, role, disabled, password }
-            : { username, displayName, role, password },
+            ? { id: user.id, displayName, role, disabled, password, tools }
+            : { username, displayName, role, password, tools },
         ),
       });
       if (!response.ok) throw new Error(await readError(response));
@@ -460,6 +490,28 @@ function UserDialog({
               Disabled
             </label>
           )}
+          <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-3">
+            <p className="text-xs font-semibold text-zinc-600">Tools</p>
+            <p className="mt-1 text-[11px] text-zinc-500">
+              {role === 'admin'
+                ? 'Admins always see every tool. These flags apply if the role becomes member.'
+                : 'Only checked tools appear for this user.'}
+            </p>
+            <div className="mt-3 space-y-2">
+              {toolLabels.map((tool) => (
+                <label key={tool.id} className="flex items-center gap-2 text-sm text-zinc-700">
+                  <input
+                    type="checkbox"
+                    checked={tools[tool.id]}
+                    onChange={(event) =>
+                      setTools((current) => ({ ...current, [tool.id]: event.target.checked }))
+                    }
+                  />
+                  {tool.label}
+                </label>
+              ))}
+            </div>
+          </div>
         </div>
         <div className="mt-5 flex items-center justify-between gap-2">
           {user ? (

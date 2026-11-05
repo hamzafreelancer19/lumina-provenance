@@ -1,22 +1,57 @@
 'use client';
 
-import { useState } from 'react';
-import { ArrowDownToLine, Check, Copy, FileCheck2, ShieldCheck, Sparkles } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { ArrowDownToLine, Check, Copy, ShieldCheck, Sparkles } from 'lucide-react';
 import { formatBytes } from '@/lib/audit';
+import { imageToRenameDataUrl } from '@/lib/rename-image';
 import type { CleanResult } from '@/lib/types';
 
 interface CleanResultCardProps {
   cleaned: CleanResult;
   onReset?: () => void;
+  onRename?: (name: string) => void;
 }
 
-export function CleanResultCard({ cleaned, onReset }: CleanResultCardProps) {
+function extensionOf(name: string) {
+  const match = name.match(/(\.[a-z0-9]+)$/i);
+  return match?.[1] ?? '';
+}
+
+function sanitizeDownloadName(value: string, fallback: string) {
+  const extension = extensionOf(fallback) || '.png';
+  const words = value
+    .trim()
+    .replace(/\.[^/.]+$/, '')
+    .replace(/[_-]+/g, ' ')
+    .replace(/[<>:"/\\|?*\u0000-\u001f]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .split(' ')
+    .filter(Boolean)
+    .slice(0, 3)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase());
+
+  const cleaned = words.join(' ').slice(0, 28).trim();
+  return `${cleaned || 'Product'}${extension}`;
+}
+
+export function CleanResultCard({ cleaned, onRename }: CleanResultCardProps) {
   const [copied, setCopied] = useState(false);
+  const [autoBusy, setAutoBusy] = useState(false);
+  const [autoError, setAutoError] = useState('');
+  const autoForUrl = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (autoForUrl.current === cleaned.url) return;
+    autoForUrl.current = cleaned.url;
+    void runAutoRename();
+    // Intentionally only when a new cleaned image appears.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cleaned.url]);
 
   const copyToClipboard = async () => {
     try {
       let imageBlob = cleaned.blob;
-      // Convert to PNG for clipboard compatibility if not PNG
       if (imageBlob.type !== 'image/png') {
         const img = new Image();
         img.src = cleaned.url;
@@ -46,6 +81,29 @@ export function CleanResultCard({ cleaned, onReset }: CleanResultCardProps) {
       // Fallback
     }
   };
+
+  async function runAutoRename() {
+    setAutoBusy(true);
+    setAutoError('');
+    try {
+      const image = await imageToRenameDataUrl(cleaned.blob);
+      const response = await fetch('/api/rename', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ image }),
+      });
+      const payload = (await response.json()) as { name?: string; error?: string };
+      if (!response.ok || !payload.name) {
+        if (response.status === 503) return;
+        throw new Error(payload.error || 'Auto rename failed.');
+      }
+      onRename?.(sanitizeDownloadName(payload.name, cleaned.name));
+    } catch (reason) {
+      setAutoError(reason instanceof Error ? reason.message : 'Auto rename failed.');
+    } finally {
+      setAutoBusy(false);
+    }
+  }
 
   return (
     <section
@@ -110,9 +168,18 @@ export function CleanResultCard({ cleaned, onReset }: CleanResultCardProps) {
           <span className="font-mono text-[10px] text-zinc-500 uppercase tracking-wider">
             Output File
           </span>
-          <p data-testid="text-clean-output" className="mt-1 font-mono text-xs font-medium text-zinc-900 dark:text-zinc-100 truncate">
-            {cleaned.name}
+          <p
+            data-testid="text-clean-output"
+            className="mt-1 font-mono text-xs font-medium text-zinc-900 dark:text-zinc-100 truncate"
+            title={cleaned.name}
+          >
+            {autoBusy ? 'Naming…' : cleaned.name}
           </p>
+          {autoError && (
+            <p className="mt-1 text-[10px] leading-snug text-amber-700 dark:text-amber-400">
+              {autoError}
+            </p>
+          )}
         </div>
         <div className="rounded-xl border border-zinc-200/70 bg-white/70 dark:border-zinc-800/70 dark:bg-zinc-900/40 p-3">
           <span className="font-mono text-[10px] text-zinc-500 uppercase tracking-wider">

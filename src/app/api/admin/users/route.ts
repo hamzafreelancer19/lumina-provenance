@@ -12,7 +12,13 @@ export async function POST(request: Request) {
   const result = await requireAdmin(request);
   if (result.response) return result.response;
 
-  let body: { username?: unknown; displayName?: unknown; password?: unknown; role?: unknown };
+  let body: {
+    username?: unknown;
+    displayName?: unknown;
+    password?: unknown;
+    role?: unknown;
+    tools?: unknown;
+  };
   try {
     body = await request.json();
   } catch {
@@ -25,6 +31,7 @@ export async function POST(request: Request) {
       displayName: typeof body.displayName === 'string' ? body.displayName : '',
       password: typeof body.password === 'string' ? body.password : '',
       role: body.role === 'admin' ? 'admin' : 'member',
+      tools: body.tools,
     });
     await logActivity(result.user.username, 'user.create', `Added ${user.username} as ${user.role}`);
     return NextResponse.json({ user });
@@ -43,6 +50,7 @@ export async function PATCH(request: Request) {
     role?: unknown;
     disabled?: unknown;
     password?: unknown;
+    tools?: unknown;
   };
   try {
     body = await request.json();
@@ -61,6 +69,7 @@ export async function PATCH(request: Request) {
       role,
       disabled: typeof body.disabled === 'boolean' ? body.disabled : undefined,
       password: typeof body.password === 'string' ? body.password : undefined,
+      tools: body.tools,
     });
     await logActivity(result.user.username, 'user.update', `Updated ${user.username}`);
     return NextResponse.json({ user });
