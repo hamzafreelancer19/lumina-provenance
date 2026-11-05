@@ -87,7 +87,8 @@ function parseListing(text: string): Listing | null {
       tags?: unknown;
     };
     const title = typeof payload.title === 'string' ? payload.title.replace(/\s+/g, ' ').trim() : '';
-    const description = typeof payload.description === 'string' ? payload.description.trim() : '';
+    const description =
+      typeof payload.description === 'string' ? normalizeDescription(payload.description) : '';
     const tags = Array.isArray(payload.tags)
       ? payload.tags
           .filter((tag): tag is string => typeof tag === 'string')
@@ -126,6 +127,34 @@ function uniqueTags(tags: string[]) {
   return next;
 }
 
+function normalizeDescription(value: string) {
+  const trimmed = value.replace(/\r\n/g, '\n').trim();
+  if (!trimmed) return '';
+
+  // Keep intentional paragraph breaks; collapse single newlines inside a paragraph.
+  let paragraphs = trimmed
+    .split(/\n\s*\n/)
+    .map((part) => part.replace(/\s+/g, ' ').trim())
+    .filter(Boolean);
+
+  // If the model returned one block, split into short paragraphs on sentence groups.
+  if (paragraphs.length === 1) {
+    const sentences = paragraphs[0]
+      .split(/(?<=[.!?])\s+/)
+      .map((part) => part.trim())
+      .filter(Boolean);
+    if (sentences.length >= 4) {
+      const chunks: string[] = [];
+      for (let index = 0; index < sentences.length; index += 2) {
+        chunks.push(sentences.slice(index, index + 2).join(' '));
+      }
+      paragraphs = chunks;
+    }
+  }
+
+  return paragraphs.join('\n\n');
+}
+
 function withShopName(description: string, shopName: string) {
   if (!shopName) return description;
   if (description.toLowerCase().includes(shopName.toLowerCase())) return description;
@@ -145,21 +174,64 @@ function listingPrompt(competitors: Competitor[], shopName: string) {
     .join('\n\n');
 
   return [
-    'The image is our product. Use only what is visible: product type, material, color, style, and use.',
-    'Study the competitor titles, descriptions, and tags for buyer keywords. Do not copy a competitor title, sentence, or tag list.',
+    'Process in this order:',
+    '1) Look at OUR product photo first. Note only what is visible: product type, material, color, style, finish, and likely use.',
+    '2) Analyze the competitor titles, descriptions, and tags for buyer search keywords and listing structure. Do not copy any competitor title, sentence, paragraph, or tag list.',
+    '3) Write a fresh Etsy listing for OUR photo using those keyword ideas.',
     shopName
       ? `Shop name: ${shopName}. Use this exact shop name once, naturally, inside the description. Do not put the shop name in the title or tags.`
       : 'No shop name was provided. Do not invent a shop name.',
     listings,
     'Return JSON only: {"title":"...","description":"...","tags":["..."]}',
-    `Title rules: ${TITLE_MIN} to ${TITLE_MAX} characters inclusive, counting spaces and punctuation. Put the strongest search keywords at the front. Use commas between phrases. No emoji, quotes, ALL CAPS, or the same word more than twice.`,
-    'Description rules: 140 to 220 words. The first two sentences must include the main keywords in normal sentences. Then cover what is visible, who it is for, and how it is used. Do not invent measurements, materials, or claims that are not in the photo.',
+    [
+      'Title rules:',
+      `- ${TITLE_MIN} to ${TITLE_MAX} characters inclusive, counting spaces and punctuation.`,
+      '- Put the strongest search keywords at the front. Use commas between phrases.',
+      '- No keyword stuffing. Any meaningful word (3+ letters) may appear at most TWICE in the whole title. Prefer once.',
+      '- Do not repeat the same phrase. No emoji, quotes, or ALL CAPS.',
+    ].join('\n'),
+    [
+      'Description rules:',
+      '- Write 160 to 260 words total.',
+      '- MUST use 4 short paragraphs separated by a blank line (\\n\\n). Never return one single paragraph.',
+      '- Paragraph 1: opening with main keywords and what the product is.',
+      '- Paragraph 2: visible details from OUR photo (color, material, style, look).',
+      '- Paragraph 3: who it is for and how/when it is used.',
+      '- Paragraph 4: soft close / gift or listing appeal. Include shop name here only if provided.',
+      '- Do not invent measurements, materials, brands, or claims that are not visible in the photo.',
+      '- No bullet lists, no markdown headings, no emoji.',
+    ].join('\n'),
     `Tag rules: exactly ${TAG_LIMIT} tags. Each tag is ${TAG_MAX} characters or fewer, multi-word when possible, with no punctuation. Do not repeat a word across tags. Cover product type, material, style, recipient, and occasion only when they fit this product.`,
   ].join('\n\n');
 }
 
+function titleWordCounts(title: string) {
+  const counts = new Map<string, number>();
+  for (const word of title.toLowerCase().match(/[a-z0-9']+/g) || []) {
+    if (word.length < 3) continue;
+    counts.set(word, (counts.get(word) || 0) + 1);
+  }
+  return counts;
+}
+
+function titleHasStuffing(title: string) {
+  return [...titleWordCounts(title).values()].some((count) => count > 2);
+}
+
+function titleIsReady(title: string) {
+  return (
+    title.length >= TITLE_MIN &&
+    title.length <= TITLE_MAX &&
+    !titleHasStuffing(title)
+  );
+}
+
 async function fitTitle(listing: Listing, signal: AbortSignal) {
-  if (listing.title.length >= TITLE_MIN && listing.title.length <= TITLE_MAX) return listing.title;
+  if (titleIsReady(listing.title)) return listing.title;
+
+  const stuffed = [...titleWordCounts(listing.title).entries()]
+    .filter(([, count]) => count > 2)
+    .map(([word]) => word);
 
   const text = await groqChat(
     {
@@ -169,14 +241,18 @@ async function fitTitle(listing: Listing, signal: AbortSignal) {
       messages: [
         {
           role: 'system',
-          content: 'You rewrite Etsy listing titles. Reply with JSON only: {"title":"..."}',
+          content:
+            'You rewrite Etsy listing titles. No keyword stuffing. Reply with JSON only: {"title":"..."}',
         },
         {
           role: 'user',
           content: [
             `Rewrite this title so its length is between ${TITLE_MIN} and ${TITLE_MAX} characters inclusive.`,
             `Current title (${listing.title.length} characters): ${listing.title}`,
-            `Keep these keywords and the same product meaning. Description for context: ${listing.description.slice(0, 500)}`,
+            stuffed.length
+              ? `These words are overused and must appear at most twice (prefer once): ${stuffed.join(', ')}`
+              : 'Do not repeat any meaningful word more than twice.',
+            `Keep the product meaning. Description for context: ${listing.description.slice(0, 500)}`,
             'No emoji, quotes, or ALL CAPS. Return JSON only.',
           ].join('\n'),
         },
@@ -186,8 +262,8 @@ async function fitTitle(listing: Listing, signal: AbortSignal) {
   );
 
   const title = parseTitle(text);
-  if (title.length < TITLE_MIN || title.length > TITLE_MAX) {
-    throw new Error('The title could not be fit between 121 and 139 characters. Try again.');
+  if (!titleIsReady(title)) {
+    throw new Error('The title could not be cleaned of keyword stuffing. Try again.');
   }
   return title;
 }
@@ -234,7 +310,7 @@ export async function POST(request: Request) {
           {
             role: 'system',
             content:
-              'You write Etsy SEO listings from a product photo and competitor listings. Reply with JSON only. Never copy a competitor listing. Never invent details that are not visible in the photo.',
+              'You write Etsy SEO listings. First analyze the product photo, then study competitor keyword patterns, then write an original title, multi-paragraph description, and tags. Reply with JSON only. Never copy a competitor listing. Never invent details that are not visible in the photo. The description must contain blank-line paragraph breaks.',
           },
           {
             role: 'user',
