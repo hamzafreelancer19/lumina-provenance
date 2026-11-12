@@ -16,6 +16,9 @@ export async function GET(request: Request) {
     username: result.user.username,
     displayName: result.user.displayName,
     role: result.user.role,
+    credits: result.user.credits,
+    dailyCreditsRemaining: result.user.dailyCreditsRemaining,
+    bonusCredits: result.user.bonusCredits,
     studioName: settings.studioName,
     maintenance: settings.maintenanceMode,
     tools: {

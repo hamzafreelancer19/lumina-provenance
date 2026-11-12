@@ -29,6 +29,9 @@ type PublicUser = {
   role: Role;
   disabled: boolean;
   tools: UserTools;
+  credits: number;
+  dailyCreditsRemaining: number;
+  bonusCredits: number;
   createdAt: number;
   lastLoginAt: number | null;
 };
@@ -110,6 +113,7 @@ const actionLabel: Record<string, string> = {
   'user.create': 'User added',
   'user.update': 'User updated',
   'user.delete': 'User removed',
+  'credits.add': 'Credits added',
   'settings.update': 'Settings',
 };
 
@@ -332,6 +336,7 @@ function UsersSection({
                 <th className="px-4 py-3 font-semibold">User</th>
                 <th className="px-4 py-3 font-semibold">Role</th>
                 <th className="px-4 py-3 font-semibold">Tools</th>
+                <th className="px-4 py-3 font-semibold">Credits</th>
                 <th className="px-4 py-3 font-semibold">Status</th>
                 <th className="px-4 py-3 font-semibold">Last sign-in</th>
                 <th className="px-4 py-3 font-semibold" />
@@ -357,6 +362,13 @@ function UsersSection({
                     </td>
                     <td className="px-4 py-3 text-xs text-zinc-600">
                       {user.role === 'admin' ? 'All tools' : assigned.length ? assigned.join(', ') : 'None'}
+                    </td>
+                    <td className="px-4 py-3">
+                      {user.role === 'admin' ? (
+                        <span className="font-semibold text-emerald-700">Unlimited</span>
+                      ) : (
+                        <span className="font-semibold tabular-nums text-zinc-900">{user.credits} total</span>
+                      )}
                     </td>
                     <td className="px-4 py-3">
                       <span className={user.disabled ? 'text-red-600' : 'text-emerald-700'}>
@@ -417,6 +429,7 @@ function UserDialog({
   const [username, setUsername] = useState(user?.username || '');
   const [displayName, setDisplayName] = useState(user?.displayName || '');
   const [password, setPassword] = useState('');
+  const [creditsToAdd, setCreditsToAdd] = useState('');
   const [role, setRole] = useState<Role>(user?.role || 'member');
   const [disabled, setDisabled] = useState(user?.disabled || false);
   const [tools, setTools] = useState<UserTools>(user?.tools || defaultTools());
@@ -433,12 +446,18 @@ function UserDialog({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(
           user
-            ? { id: user.id, displayName, role, disabled, password, tools }
+            ? { id: user.id, displayName, role, disabled, password, tools, creditsToAdd: Number(creditsToAdd || 0) }
             : { username, displayName, role, password, tools },
         ),
       });
       if (!response.ok) throw new Error(await readError(response));
-      await onSaved(user ? 'User updated.' : 'User added. They can sign in now.');
+      await onSaved(
+        user
+          ? Number(creditsToAdd) > 0
+            ? `User updated and ${creditsToAdd} bonus credits added.`
+            : 'User updated.'
+          : 'User added. They can sign in now.',
+      );
     } catch (reason) {
       onError(reason instanceof Error ? reason.message : 'Could not save the user.');
       setPending(false);
@@ -480,6 +499,34 @@ function UserDialog({
             required={!user}
             placeholder={user ? 'Leave blank to keep the current password' : 'At least 8 characters'}
           />
+          {user && role === 'admin' ? (
+            <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-3">
+              <p className="text-sm font-semibold text-emerald-900">Unlimited credits</p>
+              <p className="mt-0.5 text-xs text-emerald-800">
+                Admins can remove watermarks without a credit limit.
+              </p>
+            </div>
+          ) : user && (
+            <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-3">
+              <p className="text-sm font-semibold text-emerald-900">{user.credits} credits available</p>
+              <p className="mt-0.5 text-xs text-emerald-800">
+                {user.dailyCreditsRemaining} daily + {user.bonusCredits} admin-granted. Daily credits reset at UTC midnight.
+              </p>
+              <label className="mt-3 block">
+                <span className="mb-1.5 block text-xs font-semibold text-zinc-600">Add bonus credits</span>
+                <input
+                  type="number"
+                  min="0"
+                  max="1000000"
+                  step="1"
+                  value={creditsToAdd}
+                  onChange={(event) => setCreditsToAdd(event.target.value)}
+                  placeholder="0"
+                  className="h-10 w-full rounded-xl border border-zinc-200 bg-white px-3 text-sm outline-none focus:border-emerald-500"
+                />
+              </label>
+            </div>
+          )}
           <label className="block">
             <span className="mb-1.5 block text-xs font-semibold text-zinc-600">Role</span>
             <select

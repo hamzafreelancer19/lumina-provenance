@@ -1,0 +1,2 @@
+export const DAILY_CREDIT_ALLOWANCE = 100;
+export const WATERMARK_CREDIT_COST = 5;

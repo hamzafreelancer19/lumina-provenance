@@ -35,8 +35,11 @@ import { PrinciplesSection } from '@/components/principles-section';
 import { FaqSection } from '@/components/faq-section';
 import { Footer } from '@/components/footer';
 import { MobileActionBar } from '@/components/mobile-action-bar';
+import { WATERMARK_CREDIT_COST } from '@/lib/credit-policy';
+import { useStudio } from '@/components/studio-gate';
 
 function StudioApp() {
+  const studio = useStudio();
   const [file, setFile] = useState<File | null>(null);
   const [audit, setAudit] = useState<Audit | null>(null);
   const [cleaned, setCleaned] = useState<CleanResult | null>(null);
@@ -130,24 +133,24 @@ function StudioApp() {
         raster = await sanitizeImageRaster(file);
       }
 
-      if (cleanedUrlRef.current && cleanedUrlRef.current !== raster.url) {
-        URL.revokeObjectURL(cleanedUrlRef.current);
-      }
-      cleanedUrlRef.current = raster.url;
-
       const removed = audit.groups.filter((group) => isSignalStatus(group.status)).length;
       const result: CleanResult = {
         ...raster,
         removed,
       };
 
+      const charge = await fetch('/api/credits/spend', { method: 'POST' });
+      if (!charge.ok) {
+        const data = (await charge.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(data?.error || 'Could not use credits for this image.');
+      }
+
+      if (cleanedUrlRef.current && cleanedUrlRef.current !== raster.url) {
+        URL.revokeObjectURL(cleanedUrlRef.current);
+      }
+      cleanedUrlRef.current = raster.url;
       setCleaned(result);
       setWorkflow('cleaned');
-      void fetch('/api/activity', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'watermark', detail: `Cleaned ${file.name}` }),
-      });
     } catch (reason) {
       setError(
         reason instanceof Error
@@ -485,6 +488,9 @@ function StudioApp() {
                       </p>
                       <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-0.5">
                         Re-encodes canvas pixels locally. All C2PA manifests and metadata are stripped.
+                        {studio.role === 'admin'
+                          ? ' Unlimited watermark removals for admins.'
+                          : ` ${WATERMARK_CREDIT_COST} credits per image.`}
                       </p>
                     </div>
                     <button
@@ -500,7 +506,9 @@ function StudioApp() {
                       )}
                       {workflow === 'cleaning'
                         ? 'Removing Watermark...'
-                        : 'Remove Watermark'}
+                        : studio.role === 'admin'
+                          ? 'Remove Watermark'
+                          : `Remove Watermark · ${WATERMARK_CREDIT_COST} credits`}
                     </button>
                   </div>
                 </div>

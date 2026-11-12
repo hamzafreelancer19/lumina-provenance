@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileS
 import { cookies } from 'next/headers';
 import { dirname, join } from 'path';
 import type { SessionPayload } from '@/lib/auth';
+import { DAILY_CREDIT_ALLOWANCE, WATERMARK_CREDIT_COST } from '@/lib/credit-policy';
 import { hashPassword, secretsMatch, verifyPassword } from '@/lib/password';
 
 export type Role = 'admin' | 'member';
@@ -22,6 +23,9 @@ export type StudioUser = {
   role: Role;
   disabled: boolean;
   tools: UserTools;
+  dailyCreditsRemaining: number;
+  dailyCreditsDate: string;
+  bonusCredits: number;
   createdAt: number;
   lastLoginAt: number | null;
 };
@@ -75,10 +79,22 @@ type Store = {
 
 const DIR_COOKIE = 'lumina_dir';
 
-export type PublicUser = Omit<StudioUser, 'passwordHash'>;
+export type PublicUser = Omit<StudioUser, 'passwordHash'> & { credits: number };
 
 const USERNAME = /^[a-zA-Z0-9._-]{3,32}$/;
 const ACTIVITY_LIMIT = 200;
+
+function utcDate(now = Date.now()) {
+  return new Date(now).toISOString().slice(0, 10);
+}
+
+function refreshUserCredits(user: StudioUser, now = Date.now()) {
+  const today = utcDate(now);
+  if (user.dailyCreditsDate !== today) {
+    user.dailyCreditsRemaining = DAILY_CREDIT_ALLOWANCE;
+    user.dailyCreditsDate = today;
+  }
+}
 
 export function defaultUserTools(): UserTools {
   return { watermark: true, mockups: true, seo: true, keywords: true };
@@ -134,6 +150,14 @@ function normalize(value: Store): Store {
     users: (Array.isArray(value.users) ? value.users : []).map((user) => ({
       ...user,
       tools: normalizeUserTools(user.tools),
+      dailyCreditsRemaining: Number.isSafeInteger(user.dailyCreditsRemaining)
+        ? Math.max(0, user.dailyCreditsRemaining)
+        : DAILY_CREDIT_ALLOWANCE,
+      dailyCreditsDate:
+        typeof user.dailyCreditsDate === 'string' ? user.dailyCreditsDate : utcDate(),
+      bonusCredits: Number.isSafeInteger(user.bonusCredits)
+        ? Math.max(0, user.bonusCredits)
+        : 0,
     })),
     activity: Array.isArray(value.activity) ? value.activity : [],
     settings: { ...defaultSettings(), ...(value.settings || {}) },
@@ -294,6 +318,9 @@ function addEnvAdmin(store: Store, username: string, password: string, displayNa
     role: 'admin',
     disabled: false,
     tools: defaultUserTools(),
+    dailyCreditsRemaining: DAILY_CREDIT_ALLOWANCE,
+    dailyCreditsDate: utcDate(),
+    bonusCredits: 0,
     createdAt: Date.now(),
     lastLoginAt: null,
   });
@@ -360,8 +387,13 @@ function updateStore<T>(mutator: (store: Store) => T): Promise<T> {
 }
 
 export function toPublicUser(user: StudioUser): PublicUser {
+  refreshUserCredits(user);
   const { passwordHash: _passwordHash, ...rest } = user;
-  return { ...rest, tools: normalizeUserTools(user.tools) };
+  return {
+    ...rest,
+    tools: normalizeUserTools(user.tools),
+    credits: user.dailyCreditsRemaining + user.bonusCredits,
+  };
 }
 
 export function findUser(session: Pick<SessionPayload, 'uid' | 'sub'>) {
@@ -438,11 +470,31 @@ export function createStudioUser(input: {
       role: input.role,
       disabled: false,
       tools,
+      dailyCreditsRemaining: DAILY_CREDIT_ALLOWANCE,
+      dailyCreditsDate: utcDate(now),
+      bonusCredits: 0,
       createdAt: now,
       lastLoginAt: null,
     };
     store.users.push(user);
     return toPublicUser(user);
+  });
+}
+
+export function spendWatermarkCredit(id: string) {
+  return updateStore((store) => {
+    const user = store.users.find((item) => item.id === id);
+    if (!user) throw new Error('User not found.');
+    refreshUserCredits(user);
+
+    if (user.dailyCreditsRemaining + user.bonusCredits < WATERMARK_CREDIT_COST) {
+      return { user: toPublicUser(user), spent: false };
+    }
+
+    const fromDaily = Math.min(user.dailyCreditsRemaining, WATERMARK_CREDIT_COST);
+    user.dailyCreditsRemaining -= fromDaily;
+    user.bonusCredits -= WATERMARK_CREDIT_COST - fromDaily;
+    return { user: toPublicUser(user), spent: true };
   });
 }
 
@@ -459,12 +511,21 @@ export function updateStudioUser(
     disabled?: boolean;
     password?: string;
     tools?: unknown;
+    creditsToAdd?: number;
   },
 ) {
   return updateStore((store) => {
     const user = store.users.find((item) => item.id === id);
     if (!user) throw new Error('User not found.');
+    refreshUserCredits(user);
     user.tools = normalizeUserTools(user.tools);
+
+    if (patch.creditsToAdd !== undefined) {
+      if (!Number.isSafeInteger(patch.creditsToAdd) || patch.creditsToAdd < 0 || patch.creditsToAdd > 1_000_000) {
+        throw new Error('Add between 0 and 1,000,000 credits.');
+      }
+      user.bonusCredits += patch.creditsToAdd;
+    }
 
     if (typeof patch.displayName === 'string') {
       const displayName = patch.displayName.trim();

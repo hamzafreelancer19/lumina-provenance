@@ -18,6 +18,7 @@ type StudioState = {
   role: Role | null;
   maintenance: boolean;
   tools: StudioTools;
+  credits: number;
 };
 
 const defaultTools: StudioTools = {
@@ -32,6 +33,7 @@ const StudioContext = createContext<StudioState>({
   role: null,
   maintenance: false,
   tools: defaultTools,
+  credits: 0,
 });
 
 export function useStudio() {
@@ -57,6 +59,7 @@ export function StudioGate({ children }: { children: React.ReactNode }) {
     role: null,
     maintenance: false,
     tools: defaultTools,
+    credits: 0,
   });
 
   useEffect(() => {
@@ -76,11 +79,13 @@ export function StudioGate({ children }: { children: React.ReactNode }) {
               role?: Role;
               maintenance?: boolean;
               tools?: StudioTools;
+              credits?: number;
             };
             setState({
               ready: true,
               role: data.role === 'admin' || data.role === 'member' ? data.role : null,
               maintenance: Boolean(data.maintenance),
+              credits: typeof data.credits === 'number' ? data.credits : 0,
               tools: {
                 watermark: data.tools?.watermark !== false,
                 mockups: data.tools?.mockups !== false,
@@ -105,12 +110,14 @@ export function StudioGate({ children }: { children: React.ReactNode }) {
           role?: Role;
           maintenance?: boolean;
           tools?: StudioTools;
+          credits?: number;
         };
         if (cancel) return;
         setState({
           ready: true,
           role: data.role === 'admin' || data.role === 'member' ? data.role : null,
           maintenance: Boolean(data.maintenance),
+          credits: typeof data.credits === 'number' ? data.credits : 0,
           tools: {
             watermark: data.tools?.watermark !== false,
             mockups: data.tools?.mockups !== false,

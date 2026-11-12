@@ -51,6 +51,7 @@ export async function PATCH(request: Request) {
     disabled?: unknown;
     password?: unknown;
     tools?: unknown;
+    creditsToAdd?: unknown;
   };
   try {
     body = await request.json();
@@ -61,6 +62,18 @@ export async function PATCH(request: Request) {
   if (typeof body.id !== 'string' || !body.id) {
     return NextResponse.json({ error: 'Choose a user.' }, { status: 400 });
   }
+  if (
+    body.creditsToAdd !== undefined &&
+    (typeof body.creditsToAdd !== 'number' ||
+      !Number.isSafeInteger(body.creditsToAdd) ||
+      body.creditsToAdd < 0 ||
+      body.creditsToAdd > 1_000_000)
+  ) {
+    return NextResponse.json(
+      { error: 'Add between 0 and 1,000,000 credits.' },
+      { status: 400 },
+    );
+  }
 
   const role: Role | undefined = body.role === 'admin' || body.role === 'member' ? body.role : undefined;
   try {
@@ -70,8 +83,16 @@ export async function PATCH(request: Request) {
       disabled: typeof body.disabled === 'boolean' ? body.disabled : undefined,
       password: typeof body.password === 'string' ? body.password : undefined,
       tools: body.tools,
+      creditsToAdd: typeof body.creditsToAdd === 'number' ? body.creditsToAdd : undefined,
     });
     await logActivity(result.user.username, 'user.update', `Updated ${user.username}`);
+    if (typeof body.creditsToAdd === 'number' && body.creditsToAdd > 0) {
+      await logActivity(
+        result.user.username,
+        'credits.add',
+        `Added ${body.creditsToAdd} bonus credits to ${user.username}`,
+      );
+    }
     return NextResponse.json({ user });
   } catch (reason) {
     return NextResponse.json({ error: message(reason) }, { status: 400 });

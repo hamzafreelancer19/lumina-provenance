@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { LogOut, Shield } from 'lucide-react';
+import { LogOut, Shield, Sparkles } from 'lucide-react';
 import { Mark } from './mark';
 import { useStudio } from './studio-gate';
 
@@ -62,6 +62,22 @@ export function Header() {
         </nav>
 
         <div className="flex shrink-0 items-center gap-2.5">
+          {studio.ready && studio.role && (
+            <span
+              title="100 daily credits, refreshed at UTC midnight. Watermark removal costs 5 credits per image."
+              className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold tabular-nums text-emerald-800"
+            >
+              <Sparkles className="h-3.5 w-3.5" />
+              {isAdmin ? (
+                <span>Unlimited</span>
+              ) : (
+                <>
+                  {studio.credits}
+                  <span className="hidden sm:inline">credits</span>
+                </>
+              )}
+            </span>
+          )}
           {isAdmin && (
             <Link
               href="/admin"
