@@ -79,6 +79,13 @@ export type PaymentConfig = {
   paymentQrImageUrl: string;
 };
 
+const DEFAULT_PAYMENT_CONFIG: PaymentConfig = {
+  paymentMethodName: 'JazzCash / SadaPay / NayaPay',
+  paymentRecipientName: 'Hamza Ali',
+  paymentAccountNumber: '03208587752',
+  paymentQrImageUrl: '/payment-qr.jpeg',
+};
+
 export type PaymentRequest = {
   id: string;
   userId: string;
@@ -960,12 +967,16 @@ export function getSettings() {
 }
 
 export function getPaymentConfig() {
-  return updateStore((store) => ({
-    paymentMethodName: store.settings.paymentMethodName || '',
-    paymentRecipientName: store.settings.paymentRecipientName || '',
-    paymentAccountNumber: store.settings.paymentAccountNumber || '',
-    paymentQrImageUrl: store.settings.paymentQrImageUrl || '',
-  }));
+  return updateStore((store) => paymentConfigWithDefaults(store.settings));
+}
+
+function paymentConfigWithDefaults(settings: Settings): PaymentConfig {
+  return {
+    paymentMethodName: settings.paymentMethodName || DEFAULT_PAYMENT_CONFIG.paymentMethodName,
+    paymentRecipientName: settings.paymentRecipientName || DEFAULT_PAYMENT_CONFIG.paymentRecipientName,
+    paymentAccountNumber: settings.paymentAccountNumber || DEFAULT_PAYMENT_CONFIG.paymentAccountNumber,
+    paymentQrImageUrl: settings.paymentQrImageUrl || DEFAULT_PAYMENT_CONFIG.paymentQrImageUrl,
+  };
 }
 
 export function listCreditPlans(activeOnly = false) {
@@ -1057,7 +1068,7 @@ export function savePaymentConfig(patch: PaymentConfig) {
   }
   if (
     paymentQrImageUrl &&
-    paymentQrImageUrl !== '/api/payments/qr' &&
+    !['/api/payments/qr', DEFAULT_PAYMENT_CONFIG.paymentQrImageUrl].includes(paymentQrImageUrl) &&
     (paymentQrImageUrl.length > 1000 || !/^https:\/\/\S+$/i.test(paymentQrImageUrl))
   ) {
     throw new Error('QR image must be a valid HTTPS image URL.');
@@ -1208,12 +1219,7 @@ export function overview() {
     return {
       users: store.users.map(toPublicUser).sort((a, b) => a.username.localeCompare(b.username)),
       activity: store.activity.slice(0, 80),
-      paymentConfig: {
-        paymentMethodName: store.settings.paymentMethodName || '',
-        paymentRecipientName: store.settings.paymentRecipientName || '',
-        paymentAccountNumber: store.settings.paymentAccountNumber || '',
-        paymentQrImageUrl: store.settings.paymentQrImageUrl || '',
-      },
+      paymentConfig: paymentConfigWithDefaults(store.settings),
       plans: store.plans.map((plan) => ({ ...plan })).sort((a, b) => a.price - b.price),
       paymentRequests: store.paymentRequests.slice(0, 100),
       settings: publicSettings(store.settings),
