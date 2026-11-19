@@ -6,6 +6,7 @@ export type CreditPlan = {
   description: string;
   active: boolean;
   popular: boolean;
+  updatedAt?: number;
 };
 
 export const REFERRAL_REWARD_CREDITS = 300;

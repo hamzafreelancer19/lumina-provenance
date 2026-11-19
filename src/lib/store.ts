@@ -6,6 +6,7 @@ import type { SessionPayload } from '@/lib/auth';
 import { DAILY_CREDIT_ALLOWANCE, WATERMARK_CREDIT_COST } from '@/lib/credit-policy';
 import { DEFAULT_CREDIT_PLANS, REFERRAL_REWARD_CREDITS, type CreditPlan } from '@/lib/pricing';
 import { hashPassword, secretsMatch, verifyPassword } from '@/lib/password';
+import { readSupabaseStore, writeSupabaseStore } from '@/lib/supabase-store';
 
 export type Role = 'admin' | 'member';
 
@@ -28,6 +29,7 @@ export type StudioUser = {
   dailyCreditsDate: string;
   bonusCredits: number;
   unlimitedCredits: boolean;
+  updatedAt: number;
   referralCode: string;
   referredBy: string | null;
   referralRewardedAt: number | null;
@@ -150,8 +152,10 @@ function uniqueReferralCode(existing: Set<string>, seed: string, preferred?: str
 
 function refreshUserCredits(user: StudioUser, now = Date.now()) {
   const today = utcDate(now);
-  if (user.dailyCreditsRemaining !== DAILY_CREDIT_ALLOWANCE || user.dailyCreditsDate !== today) {
-    user.dailyCreditsRemaining = DAILY_CREDIT_ALLOWANCE;
+  if (!Number.isSafeInteger(user.dailyCreditsRemaining) || user.dailyCreditsRemaining < 0) {
+    user.dailyCreditsRemaining = 0;
+  }
+  if (typeof user.dailyCreditsDate !== 'string') {
     user.dailyCreditsDate = today;
   }
 }
@@ -278,6 +282,7 @@ function normalize(value: Store): Store {
     return {
       ...user,
       tools: normalizeUserTools(user.tools),
+      updatedAt: Number.isSafeInteger(user.updatedAt) ? Math.max(0, user.updatedAt) : 0,
       dailyCreditsRemaining: Number.isSafeInteger(user.dailyCreditsRemaining)
         ? Math.max(0, user.dailyCreditsRemaining)
         : DAILY_CREDIT_ALLOWANCE,
@@ -302,6 +307,10 @@ function normalize(value: Store): Store {
           ...plan,
           active: plan.active === true,
           popular: plan.popular === true,
+          updatedAt:
+            typeof plan.updatedAt === 'number' && Number.isSafeInteger(plan.updatedAt)
+              ? Math.max(0, plan.updatedAt)
+              : 0,
         }))
       : DEFAULT_CREDIT_PLANS.map((plan) => ({ ...plan })),
     settings: { ...defaultSettings(), ...(value.settings || {}) },
@@ -344,17 +353,28 @@ function absorb(base: Store, extra: Store | null): Store {
         cloudflareApiToken:
           base.settings.cloudflareApiToken || extra.settings.cloudflareApiToken,
       };
-  const map = new Map<string, StudioUser>();
-  for (const user of [...(extraWins ? base.users : extra.users), ...(extraWins ? extra.users : base.users)]) {
+  const users = new Map<string, StudioUser>();
+  for (const user of [...base.users, ...extra.users]) {
     if (deleted.has(user.username.toLowerCase())) continue;
-    map.set(user.username.toLowerCase(), user);
+    const key = user.username.toLowerCase();
+    const current = users.get(key);
+    if (!current || (user.updatedAt || 0) > (current.updatedAt || 0)) {
+      users.set(key, user);
+    }
+  }
+  const plans = new Map<string, CreditPlan>();
+  for (const plan of [...base.plans, ...extra.plans]) {
+    const current = plans.get(plan.id);
+    if (!current || (plan.updatedAt || 0) > (current.updatedAt || 0)) {
+      plans.set(plan.id, plan);
+    }
   }
   return {
-    users: [...map.values()],
+    users: [...users.values()],
     settings,
     activity: base.activity.length >= extra.activity.length ? base.activity : extra.activity,
     paymentRequests: [...paymentRequests.values()].sort((a, b) => b.createdAt - a.createdAt),
-    plans: extraWins ? extra.plans : base.plans,
+    plans: [...plans.values()],
     revision: Math.max(base.revision || 0, extra.revision || 0),
     deletedUsers: [...deleted],
   };
@@ -467,6 +487,7 @@ function addEnvAdmin(store: Store, username: string, password: string, displayNa
       existing.disabled = false;
       changed = true;
     }
+    if (changed) existing.updatedAt = Date.now();
     return changed;
   }
   store.users.push({
@@ -481,6 +502,7 @@ function addEnvAdmin(store: Store, username: string, password: string, displayNa
     dailyCreditsDate: utcDate(),
     bonusCredits: 0,
     unlimitedCredits: false,
+    updatedAt: Date.now(),
     referralCode: uniqueReferralCode(new Set(store.users.map((user) => user.referralCode)), envUserId(username)),
     referredBy: null,
     referralRewardedAt: null,
@@ -525,6 +547,7 @@ function updateStore<T>(mutator: (store: Store) => T): Promise<T> {
   const run = chain.then(async () => {
     let store = absorb(memory || emptyStore(), readStoredFile());
     store = absorb(store, await readDirCookie());
+    store = absorb(store, await readSupabaseStore(normalize));
     const changedBySeed = seed(store);
     const before = JSON.stringify({
       users: store.users,
@@ -544,6 +567,7 @@ function updateStore<T>(mutator: (store: Store) => T): Promise<T> {
     if (changedBySeed || before !== after) store.revision = Date.now();
     memory = store;
     save(store);
+    await writeSupabaseStore(store);
     if (store.revision) await writeDirCookie(store);
   });
   chain = run.then(
@@ -595,6 +619,7 @@ export async function authenticate(username: string, password: string) {
     if (adminMatch || user.role === 'admin') user.role = 'admin';
     if (user.disabled && recovery) user.disabled = false;
     user.lastLoginAt = Date.now();
+    user.updatedAt = user.lastLoginAt;
     return toPublicUser(user);
   });
 }
@@ -648,13 +673,17 @@ export function createStudioUser(input: {
       dailyCreditsDate: utcDate(now),
       bonusCredits: referrer ? REFERRAL_REWARD_CREDITS : 0,
       unlimitedCredits: false,
+      updatedAt: now,
       referralCode: uniqueReferralCode(new Set(store.users.map((item) => item.referralCode)), id),
       referredBy: referrer?.referralCode || null,
       referralRewardedAt: referrer ? now : null,
       createdAt: now,
       lastLoginAt: null,
     };
-    if (referrer) referrer.bonusCredits += REFERRAL_REWARD_CREDITS;
+    if (referrer) {
+      referrer.bonusCredits += REFERRAL_REWARD_CREDITS;
+      referrer.updatedAt = now;
+    }
     store.users.push(user);
     return toPublicUser(user);
   });
@@ -699,6 +728,7 @@ export function spendWatermarkCredit(id: string) {
     const fromDaily = Math.min(user.dailyCreditsRemaining, WATERMARK_CREDIT_COST);
     user.dailyCreditsRemaining -= fromDaily;
     user.bonusCredits -= WATERMARK_CREDIT_COST - fromDaily;
+    user.updatedAt = Date.now();
     return { user: toPublicUser(user), spent: true, unlimited: false };
   });
 }
@@ -776,6 +806,7 @@ export function updatePaymentRequestStatus(id: string, adminUsername: string, st
       const user = store.users.find((item) => item.id === payment.userId);
       if (!user || user.disabled) throw new Error('The account for this payment is unavailable.');
       user.bonusCredits += payment.credits;
+      user.updatedAt = Date.now();
     }
     payment.status = status;
     payment.reviewedAt = Date.now();
@@ -817,6 +848,7 @@ export function updateOwnProfile(
     }
     if (displayName !== undefined) user.displayName = displayName;
     if (patch.newPassword !== undefined) user.passwordHash = hashPassword(patch.newPassword);
+    user.updatedAt = Date.now();
     return toPublicUser(user);
   });
 }
@@ -854,6 +886,7 @@ export function updateStudioUser(
     if (typeof patch.unlimitedCredits === 'boolean') {
       user.unlimitedCredits = patch.unlimitedCredits;
     }
+    user.updatedAt = Date.now();
 
     if (typeof patch.displayName === 'string') {
       const displayName = patch.displayName.trim();
@@ -902,6 +935,7 @@ export function deleteStudioUser(id: string, actorId: string) {
     }
     store.users = store.users.filter((item) => item.id !== id);
     store.deletedUsers.push(user.username.toLowerCase());
+    user.updatedAt = Date.now();
     return toPublicUser(user);
   });
 }
@@ -1049,6 +1083,7 @@ export function saveCreditPlan(input: {
       description,
       active: input.active,
       popular: input.popular,
+      updatedAt: Date.now(),
     };
     const index = store.plans.findIndex((item) => item.id === id);
     if (index < 0) store.plans.push(plan);
@@ -1065,6 +1100,7 @@ export function setCreditPlanActive(id: string, active: boolean) {
       throw new Error('Keep at least one plan active for users.');
     }
     plan.active = active;
+    plan.updatedAt = Date.now();
     return { ...plan };
   });
 }
