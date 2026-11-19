@@ -214,9 +214,11 @@ export function PricingPage() {
                     <div><dt className="text-[10px] font-semibold uppercase tracking-wider text-zinc-400">Number / account</dt><dd className="mt-0.5 select-all font-mono text-lg font-bold text-emerald-800 dark:text-emerald-300">{config.paymentAccountNumber}</dd></div>
                   </dl>
                   {config.paymentQrImageUrl ? (
-                    <div className="flex flex-col items-center rounded-xl border border-zinc-200 bg-white p-3 dark:border-zinc-700 dark:bg-zinc-950">
-                      <img src={config.paymentQrImageUrl} alt="Payment QR code" className="h-32 w-32 object-contain" />
-                      <span className="mt-1 inline-flex items-center gap-1 text-[10px] font-semibold text-zinc-500"><QrCode className="h-3 w-3" />Scan to pay</span>
+                    <div className="flex flex-col items-center rounded-2xl border-2 border-emerald-600 bg-white p-3 shadow-[0_0_0_4px_rgba(5,150,105,0.12)] dark:border-emerald-500 dark:bg-zinc-950">
+                      <div className="flex h-36 w-36 items-center justify-center rounded-xl border border-zinc-300 bg-white p-1 dark:border-zinc-600">
+                        <img src={config.paymentQrImageUrl} alt="Payment QR code" className="h-full w-full object-contain" />
+                      </div>
+                      <span className="mt-2 inline-flex items-center gap-1 text-[10px] font-semibold text-zinc-600 dark:text-zinc-300"><QrCode className="h-3 w-3" />Scan to pay</span>
                     </div>
                   ) : (
                     <div className="flex min-h-32 items-center justify-center rounded-xl border border-dashed border-zinc-300 px-4 text-center text-xs text-zinc-400 dark:border-zinc-700">QR code not provided</div>
