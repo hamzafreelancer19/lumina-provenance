@@ -95,7 +95,7 @@ export function Header() {
               title={
                 isAdmin || studio.unlimitedCredits
                   ? 'Unlimited credits'
-                  : '100 daily credits, refreshed at UTC midnight. Watermark removal costs 5 credits per image.'
+                  : 'Credits do not refill automatically. Watermark removal costs 5 credits per image.'
               }
               className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold tabular-nums text-emerald-800"
             >

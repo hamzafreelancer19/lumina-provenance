@@ -23,6 +23,7 @@ type Profile = {
   dailyCreditsRemaining: number;
   bonusCredits: number;
   unlimitedCredits: boolean;
+  activePlan: { name: string; credits: number; activatedAt: number } | null;
 };
 
 async function readError(response: Response) {
@@ -140,8 +141,21 @@ export function ProfilePage({ profile }: { profile: Profile }) {
                 </div>
                 {profile.role !== 'admin' && !profile.unlimitedCredits && (
                   <p className="mt-3 text-xs text-zinc-500">
-                    {profile.dailyCreditsRemaining} daily · {profile.bonusCredits} bonus
+                    Purchased, referral, or admin-granted credits. No automatic daily refill.
                   </p>
+                )}
+                {profile.activePlan && (
+                  <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 dark:border-emerald-900 dark:bg-emerald-950/40">
+                    <p className="text-[10px] font-semibold uppercase tracking-wide text-emerald-700 dark:text-emerald-400">
+                      Latest activated plan
+                    </p>
+                    <p className="mt-0.5 text-sm font-bold text-emerald-950 dark:text-emerald-100">
+                      {profile.activePlan.name}
+                    </p>
+                    <p className="text-xs text-emerald-800 dark:text-emerald-300">
+                      {profile.activePlan.credits.toLocaleString()} credits added · {new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(profile.activePlan.activatedAt)}
+                    </p>
+                  </div>
                 )}
               </div>
 

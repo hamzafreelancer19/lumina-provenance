@@ -150,7 +150,7 @@ function uniqueReferralCode(existing: Set<string>, seed: string, preferred?: str
 
 function refreshUserCredits(user: StudioUser, now = Date.now()) {
   const today = utcDate(now);
-  if (user.dailyCreditsDate !== today) {
+  if (user.dailyCreditsRemaining !== DAILY_CREDIT_ALLOWANCE || user.dailyCreditsDate !== today) {
     user.dailyCreditsRemaining = DAILY_CREDIT_ALLOWANCE;
     user.dailyCreditsDate = today;
   }
@@ -747,6 +747,20 @@ export function listPaymentRequests(userId?: string) {
       .filter((item) => !userId || item.userId === userId)
       .map(({ proofFileName: _proofFileName, ...item }) => item),
   );
+}
+
+export function getLatestApprovedPlan(userId: string) {
+  return updateStore((store) => {
+    const payment = store.paymentRequests
+      .filter((item) => item.userId === userId && item.status === 'approved')
+      .sort((a, b) => (b.reviewedAt || b.createdAt) - (a.reviewedAt || a.createdAt))[0];
+    if (!payment) return null;
+    return {
+      name: payment.planName,
+      credits: payment.credits,
+      activatedAt: payment.reviewedAt || payment.createdAt,
+    };
+  });
 }
 
 export function findPaymentRequest(id: string) {

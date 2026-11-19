@@ -4,7 +4,7 @@ import { redirect } from 'next/navigation';
 import { Header } from '@/components/header';
 import { ProfilePage } from '@/components/profile-page';
 import { SESSION_COOKIE, readSession } from '@/lib/auth';
-import { findUser } from '@/lib/store';
+import { findUser, getLatestApprovedPlan } from '@/lib/store';
 
 export const metadata: Metadata = {
   title: 'Your Profile',
@@ -19,6 +19,7 @@ export default async function UserProfilePage() {
   if (!session) redirect('/login?next=/profile');
   const user = await findUser(session);
   if (!user || user.disabled) redirect('/login?next=/profile');
+  const activePlan = await getLatestApprovedPlan(user.id);
 
   return (
     <div className="admin-shell min-h-[100dvh] text-zinc-900">
@@ -33,6 +34,7 @@ export default async function UserProfilePage() {
           dailyCreditsRemaining: user.dailyCreditsRemaining,
           bonusCredits: user.bonusCredits,
           unlimitedCredits: user.unlimitedCredits,
+          activePlan,
         }}
       />
     </div>

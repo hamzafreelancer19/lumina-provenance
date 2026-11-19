@@ -783,7 +783,7 @@ function UserDialog({
                 {unlimitedCredits ? 'Unlimited credits' : `${user.credits} credits available`}
               </p>
               <p className="mt-0.5 text-xs text-emerald-800">
-                {user.dailyCreditsRemaining} daily + {user.bonusCredits} admin-granted. Daily credits reset at UTC midnight.
+                {user.bonusCredits} purchased, referral, or admin-granted credits. No automatic daily refill.
               </p>
               <div className="mt-3 flex items-center justify-between rounded-lg border border-emerald-100 bg-white px-3 py-2.5">
                 <span className="text-sm font-medium text-zinc-700">Unlimited credits</span>
