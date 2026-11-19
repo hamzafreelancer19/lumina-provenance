@@ -12,6 +12,7 @@
     "@contentauth/c2pa-web": "^0.8.2",
     "lucide-react": "^1.16.0",
     "next": "^15.2.0",
+    "postgres": "^4.1.1",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "sharp": "^0.35.5"

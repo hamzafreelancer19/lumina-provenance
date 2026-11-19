@@ -1234,6 +1234,7 @@ function SettingsSection({
   const [cfPending, setCfPending] = useState(false);
   const [paymentDraft, setPaymentDraft] = useState(paymentConfig);
   const [paymentPending, setPaymentPending] = useState(false);
+  const [qrPending, setQrPending] = useState(false);
 
   async function onSubmit(event: FormEvent) {
     event.preventDefault();
@@ -1685,7 +1686,56 @@ function SettingsSection({
           <Field label="Payment method name" value={paymentDraft.paymentMethodName} onChange={(value) => setPaymentDraft((current) => ({ ...current, paymentMethodName: value }))} placeholder="e.g. Mobile Wallet" />
           <Field label="Receiver name" value={paymentDraft.paymentRecipientName} onChange={(value) => setPaymentDraft((current) => ({ ...current, paymentRecipientName: value }))} />
           <Field label="Account / mobile number" value={paymentDraft.paymentAccountNumber} onChange={(value) => setPaymentDraft((current) => ({ ...current, paymentAccountNumber: value }))} />
-          <Field label="QR image URL (HTTPS, optional)" value={paymentDraft.paymentQrImageUrl} onChange={(value) => setPaymentDraft((current) => ({ ...current, paymentQrImageUrl: value }))} required={false} placeholder="https://…" />
+          <div className="space-y-3 rounded-xl border border-zinc-200 bg-zinc-50 p-4 dark:border-zinc-800 dark:bg-zinc-900/50">
+            <div>
+              <p className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">Payment QR image</p>
+              <p className="mt-1 text-xs leading-5 text-zinc-500">Upload a PNG, JPG, or WebP image up to 3 MB. It is saved and added to the pricing page immediately.</p>
+            </div>
+            <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm font-medium text-zinc-700 transition hover:border-emerald-400 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-200">
+              {qrPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <CreditCard className="h-4 w-4" />}
+              {qrPending ? 'Uploading QR…' : 'Choose QR image'}
+              <input
+                type="file"
+                accept="image/png,image/jpeg,image/webp"
+                disabled={qrPending}
+                className="sr-only"
+                onChange={async (event) => {
+                  const file = event.target.files?.[0];
+                  event.target.value = '';
+                  if (!file) return;
+                  setQrPending(true);
+                  onError('');
+                  try {
+                    const form = new FormData();
+                    form.set('qrImage', file);
+                    const response = await fetch('/api/admin/payment-qr', { method: 'POST', body: form });
+                    if (!response.ok) throw new Error(await readError(response));
+                    const data = (await response.json()) as { paymentQrImageUrl: string };
+                    setPaymentDraft((current) => ({ ...current, paymentQrImageUrl: data.paymentQrImageUrl }));
+                    onNotice('QR image uploaded and added to the pricing page.');
+                    await onChange();
+                  } catch (reason) {
+                    onError(reason instanceof Error ? reason.message : 'Could not upload the QR image.');
+                  } finally {
+                    setQrPending(false);
+                  }
+                }}
+              />
+            </label>
+            {paymentDraft.paymentQrImageUrl && (
+              <div className="flex items-center gap-3">
+                <img
+                  src={paymentDraft.paymentQrImageUrl}
+                  alt="Payment QR preview"
+                  className="h-24 w-24 rounded-lg border border-zinc-200 bg-white object-contain p-1 dark:border-zinc-700"
+                />
+                <span className="break-all text-xs text-zinc-500">
+                  {paymentDraft.paymentQrImageUrl === '/api/payments/qr' ? 'Uploaded QR image' : paymentDraft.paymentQrImageUrl}
+                </span>
+              </div>
+            )}
+            <Field label="Or use an HTTPS image URL" value={paymentDraft.paymentQrImageUrl === '/api/payments/qr' ? '' : paymentDraft.paymentQrImageUrl} onChange={(value) => setPaymentDraft((current) => ({ ...current, paymentQrImageUrl: value }))} required={false} placeholder="https://…" />
+          </div>
           <button type="submit" disabled={paymentPending} className="inline-flex h-10 items-center gap-2 rounded-xl bg-emerald-700 px-4 text-sm font-semibold text-white hover:bg-emerald-800 disabled:opacity-60">
             {paymentPending && <Loader2 className="h-4 w-4 animate-spin" />}
             Save payment method

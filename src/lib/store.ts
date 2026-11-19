@@ -2,6 +2,7 @@ import { createHash, createHmac, randomUUID, timingSafeEqual } from 'crypto';
 import { existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'fs';
 import { cookies } from 'next/headers';
 import { dirname, join } from 'path';
+import postgres from 'postgres';
 import type { SessionPayload } from '@/lib/auth';
 import { DAILY_CREDIT_ALLOWANCE, WATERMARK_CREDIT_COST } from '@/lib/credit-policy';
 import { DEFAULT_CREDIT_PLANS, REFERRAL_REWARD_CREDITS, type CreditPlan } from '@/lib/pricing';
@@ -182,24 +183,165 @@ function filePath() {
   return join(root, 'studio.json');
 }
 
+function databaseUrl() {
+  return (
+    process.env.POSTGRES_URL ||
+    process.env.DATABASE_URL ||
+    process.env.NEON_DATABASE_URL ||
+    ''
+  );
+}
+
+let database: ReturnType<typeof postgres> | null = null;
+let databaseSetup: Promise<void> | null = null;
+
+function getDatabase() {
+  const url = databaseUrl();
+  if (!url) {
+    if (process.env.VERCEL) {
+      throw new Error(
+        'Persistent storage is not connected. Add a Postgres database from the Vercel Marketplace and redeploy.',
+      );
+    }
+    return null;
+  }
+  if (!database) {
+    database = postgres(url, {
+      max: 1,
+      connect_timeout: 10,
+      idle_timeout: 20,
+      ssl: /localhost|127\.0\.0\.1/.test(url) ? false : 'require',
+    });
+  }
+  return database;
+}
+
+async function ensureDatabaseTables(sql: ReturnType<typeof postgres>) {
+  if (!databaseSetup) {
+    databaseSetup = (async () => {
+      await sql.unsafe(`
+        CREATE TABLE IF NOT EXISTS lumina_store (
+          id integer PRIMARY KEY CHECK (id = 1),
+          data jsonb NOT NULL
+        )
+      `);
+      await sql.unsafe(`
+        CREATE TABLE IF NOT EXISTS lumina_files (
+          name text PRIMARY KEY,
+          content bytea NOT NULL,
+          content_type text NOT NULL
+        )
+      `);
+    })().catch((reason: unknown) => {
+      databaseSetup = null;
+      throw reason;
+    });
+  }
+  await databaseSetup;
+}
+
 function paymentProofPath(name: string) {
   if (!/^[0-9a-f-]+\.(png|jpg|webp)$/i.test(name)) throw new Error('Invalid payment proof.');
   const root = process.env.VERCEL ? '/tmp' : join(process.cwd(), 'data');
   return join(root, 'payment-proofs', name);
 }
 
-export function savePaymentProof(name: string, bytes: Uint8Array) {
+function paymentQrPath(extension: 'png' | 'jpg' | 'webp') {
+  const root = process.env.VERCEL ? '/tmp' : join(process.cwd(), 'data');
+  return join(root, 'payment-qr', `qr.${extension}`);
+}
+
+export async function savePaymentQrImage(extension: 'png' | 'jpg' | 'webp', bytes: Uint8Array) {
+  const sql = getDatabase();
+  if (sql) {
+    await ensureDatabaseTables(sql);
+    await sql`
+      INSERT INTO lumina_files (name, content, content_type)
+      VALUES ('payment-qr', ${Buffer.from(bytes)}, ${extension === 'jpg' ? 'image/jpeg' : `image/${extension}`})
+      ON CONFLICT (name) DO UPDATE SET
+        content = EXCLUDED.content,
+        content_type = EXCLUDED.content_type
+    `;
+    return;
+  }
+  const path = paymentQrPath(extension);
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, bytes);
+  for (const otherExtension of ['png', 'jpg', 'webp'] as const) {
+    if (otherExtension !== extension) {
+      const oldPath = paymentQrPath(otherExtension);
+      if (existsSync(oldPath)) unlinkSync(oldPath);
+    }
+  }
+}
+
+export async function readPaymentQrImage() {
+  const sql = getDatabase();
+  if (sql) {
+    await ensureDatabaseTables(sql);
+    const [image] = await sql`
+      SELECT content, content_type FROM lumina_files WHERE name = 'payment-qr'
+    `;
+    return image
+      ? { bytes: Buffer.from(image.content), contentType: image.content_type }
+      : null;
+  }
+  for (const extension of ['png', 'jpg', 'webp'] as const) {
+    const path = paymentQrPath(extension);
+    if (existsSync(path)) {
+      const contentType = extension === 'jpg' ? 'image/jpeg' : `image/${extension}`;
+      return { bytes: readFileSync(path), contentType };
+    }
+  }
+  return null;
+}
+
+export function setPaymentQrImageUrl(paymentQrImageUrl: string) {
+  return updateStore((store) => {
+    store.settings.paymentQrImageUrl = paymentQrImageUrl;
+  });
+}
+
+export async function savePaymentProof(name: string, bytes: Uint8Array) {
+  const sql = getDatabase();
+  if (sql) {
+    await ensureDatabaseTables(sql);
+    await sql`
+      INSERT INTO lumina_files (name, content, content_type)
+      VALUES (
+        ${`payment-proof:${name}`},
+        ${Buffer.from(bytes)},
+        ${name.endsWith('.png') ? 'image/png' : name.endsWith('.webp') ? 'image/webp' : 'image/jpeg'}
+      )
+    `;
+    return;
+  }
   const path = paymentProofPath(name);
   mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, bytes, { flag: 'wx' });
 }
 
-export function deletePaymentProof(name: string) {
+export async function deletePaymentProof(name: string) {
+  const sql = getDatabase();
+  if (sql) {
+    await ensureDatabaseTables(sql);
+    await sql`DELETE FROM lumina_files WHERE name = ${`payment-proof:${name}`}`;
+    return;
+  }
   const path = paymentProofPath(name);
   if (existsSync(path)) unlinkSync(path);
 }
 
-export function readPaymentProof(name: string) {
+export async function readPaymentProof(name: string) {
+  const sql = getDatabase();
+  if (sql) {
+    await ensureDatabaseTables(sql);
+    const [image] = await sql`
+      SELECT content FROM lumina_files WHERE name = ${`payment-proof:${name}`}
+    `;
+    if (!image) throw new Error('Payment screenshot not found.');
+    return Buffer.from(image.content);
+  }
   return readFileSync(paymentProofPath(name));
 }
 
@@ -482,6 +624,50 @@ let chain: Promise<void> = Promise.resolve();
 function updateStore<T>(mutator: (store: Store) => T): Promise<T> {
   let result!: T;
   const run = chain.then(async () => {
+    const sql = getDatabase();
+    if (sql) {
+      await ensureDatabaseTables(sql);
+      let store!: Store;
+      const initial = memory || readStoredFile() || emptyStore();
+      await sql.begin(async (transaction) => {
+        await transaction`
+          INSERT INTO lumina_store (id, data)
+          VALUES (1, ${JSON.stringify(initial)}::jsonb)
+          ON CONFLICT (id) DO NOTHING
+        `;
+        const [row] = await transaction`
+          SELECT data FROM lumina_store WHERE id = 1 FOR UPDATE
+        `;
+        if (!row) throw new Error('Could not load the persistent studio database.');
+        store = normalize(row.data as Store);
+        const previousRevision = store.revision;
+        const changedBySeed = seed(store);
+        const before = JSON.stringify({
+          users: store.users,
+          settings: store.settings,
+          paymentRequests: store.paymentRequests,
+          plans: store.plans,
+          deletedUsers: store.deletedUsers,
+        });
+        result = mutator(store);
+        const after = JSON.stringify({
+          users: store.users,
+          settings: store.settings,
+          paymentRequests: store.paymentRequests,
+          plans: store.plans,
+          deletedUsers: store.deletedUsers,
+        });
+        if (changedBySeed || before !== after) {
+          store.revision = Math.max(Date.now(), previousRevision + 1);
+        }
+        await transaction`
+          UPDATE lumina_store SET data = ${JSON.stringify(store)}::jsonb WHERE id = 1
+        `;
+      });
+      memory = store;
+      return;
+    }
+
     let store = absorb(memory || emptyStore(), readStoredFile());
     store = absorb(store, await readDirCookie());
     const changedBySeed = seed(store);
@@ -1023,8 +1209,8 @@ export function savePaymentConfig(patch: PaymentConfig) {
   }
   if (
     paymentQrImageUrl &&
-    (paymentQrImageUrl.length > 1000 ||
-      !/^https:\/\/\S+$/i.test(paymentQrImageUrl))
+    paymentQrImageUrl !== '/api/payments/qr' &&
+    (paymentQrImageUrl.length > 1000 || !/^https:\/\/\S+$/i.test(paymentQrImageUrl))
   ) {
     throw new Error('QR image must be a valid HTTPS image URL.');
   }

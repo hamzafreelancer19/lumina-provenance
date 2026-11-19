@@ -64,7 +64,7 @@ export async function POST(request: Request) {
 
   try {
     if (proof instanceof File && proof.size > 0 && proofFileName) {
-      savePaymentProof(proofFileName, new Uint8Array(await proof.arrayBuffer()));
+      await savePaymentProof(proofFileName, new Uint8Array(await proof.arrayBuffer()));
     }
     const payment = await createPaymentRequest({
       userId: result.user.id,
@@ -78,7 +78,7 @@ export async function POST(request: Request) {
   } catch (reason) {
     if (proofFileName) {
       try {
-        deletePaymentProof(proofFileName);
+        await deletePaymentProof(proofFileName);
       } catch {
         // Keep the original request error; the proof uses a random, private file name.
       }

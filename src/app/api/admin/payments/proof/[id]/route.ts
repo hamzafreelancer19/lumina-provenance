@@ -14,7 +14,7 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
   }
 
   try {
-    const image = readPaymentProof(payment.proofFileName);
+    const image = await readPaymentProof(payment.proofFileName);
     const extension = payment.proofFileName.split('.').pop();
     const type = extension === 'png' ? 'image/png' : extension === 'webp' ? 'image/webp' : 'image/jpeg';
     return new Response(image, {

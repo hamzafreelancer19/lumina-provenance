@@ -51,6 +51,7 @@ function StudioApp() {
   const [workflow, setWorkflow] = useState<Workflow>('idle');
   const [error, setError] = useState('');
   const [upgradeRequired, setUpgradeRequired] = useState(false);
+  const [creditsEmpty, setCreditsEmpty] = useState(false);
   const [openGroup, setOpenGroup] = useState<string | null>(null);
   const [showEducation, setShowEducation] = useState(false);
   const [canChooseDownloadFolder, setCanChooseDownloadFolder] = useState(false);
@@ -188,10 +189,14 @@ function StudioApp() {
 
       const charge = await fetch('/api/credits/spend', { method: 'POST' });
       if (!charge.ok) {
-        const data = (await charge.json().catch(() => null)) as { error?: string } | null;
-        if (charge.status === 402) setUpgradeRequired(true);
+        const data = (await charge.json().catch(() => null)) as { error?: string; credits?: number } | null;
+        if (charge.status === 402) {
+          setCreditsEmpty(data?.credits === 0);
+          setUpgradeRequired(true);
+        }
         throw new Error(data?.error || 'Could not use credits for this image.');
       }
+      const creditUsage = (await charge.json()) as { credits?: number; unlimited?: boolean };
 
       if (cleanedUrlRef.current && cleanedUrlRef.current !== raster.url) {
         URL.revokeObjectURL(cleanedUrlRef.current);
@@ -199,6 +204,10 @@ function StudioApp() {
       cleanedUrlRef.current = raster.url;
       setCleaned(result);
       setWorkflow('cleaned');
+      if (!creditUsage.unlimited && creditUsage.credits === 0) {
+        setCreditsEmpty(true);
+        setUpgradeRequired(true);
+      }
     } catch (reason) {
       setError(
         reason instanceof Error
@@ -380,14 +389,6 @@ function StudioApp() {
               <div className="flex-1">
                 <p className="font-semibold text-rose-700 dark:text-rose-200">Audit inspection failed</p>
                 <p className="mt-0.5 text-rose-600/80 dark:text-rose-300/80">{error}</p>
-                {upgradeRequired && (
-                  <Link
-                    href="/pricing"
-                    className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-emerald-700 px-3 py-2 text-xs font-semibold text-white transition hover:bg-emerald-800"
-                  >
-                    View credit plans <ArrowRight size={13} />
-                  </Link>
-                )}
               </div>
               <button
                 data-testid="button-dismiss-error"
@@ -645,6 +646,57 @@ function StudioApp() {
       />
 
       <Footer />
+
+      {upgradeRequired && (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-zinc-950/60 p-4 backdrop-blur-sm"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setUpgradeRequired(false);
+          }}
+        >
+          <section
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="credits-empty-title"
+            aria-describedby="credits-empty-description"
+            className="relative w-full max-w-md rounded-3xl border border-zinc-200 bg-white p-6 text-center shadow-2xl dark:border-zinc-700 dark:bg-zinc-950 sm:p-8"
+          >
+            <button
+              type="button"
+              onClick={() => setUpgradeRequired(false)}
+              aria-label="Close upgrade prompt"
+              className="absolute right-4 top-4 rounded-lg p-2 text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-800 dark:hover:text-zinc-200"
+            >
+              <X size={18} />
+            </button>
+            <span className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">
+              <Sparkles size={25} />
+            </span>
+            <h2 id="credits-empty-title" className="mt-5 font-display text-2xl font-extrabold tracking-tight text-zinc-950 dark:text-zinc-50">
+              {creditsEmpty ? 'You’re out of credits' : 'Not enough credits'}
+            </h2>
+            <p id="credits-empty-description" className="mt-2 text-sm leading-6 text-zinc-600 dark:text-zinc-400">
+              {creditsEmpty
+                ? 'Upgrade with a credit plan to keep removing watermarks. Your image is ready if your last credits were used.'
+                : `You need ${WATERMARK_CREDIT_COST} credits per image. Choose a plan to continue.`}
+            </p>
+            <Link
+              href="/pricing"
+              onClick={() => setUpgradeRequired(false)}
+              className="mt-6 inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-emerald-700 px-4 text-sm font-semibold text-white transition hover:bg-emerald-800"
+            >
+              Upgrade your credits <ArrowRight size={16} />
+            </Link>
+            <button
+              type="button"
+              onClick={() => setUpgradeRequired(false)}
+              className="mt-3 h-10 w-full rounded-xl text-sm font-medium text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-800 dark:hover:bg-zinc-900 dark:hover:text-zinc-200"
+            >
+              Maybe later
+            </button>
+          </section>
+        </div>
+      )}
     </div>
   );
 }
