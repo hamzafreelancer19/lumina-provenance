@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { authorizeTool } from '@/lib/access';
-import { cloudflareAiConfigured, cloudflareChat } from '@/lib/cloudflare-ai';
+import { cloudflareAiConfigured, visionChat } from '@/lib/cloudflare-ai';
+import { getGroqApiKeys } from '@/lib/groq';
 import { logActivity } from '@/lib/store';
 
 export const maxDuration = 60;
@@ -233,7 +234,7 @@ async function fitTitle(listing: Listing, signal: AbortSignal) {
     .filter(([, count]) => count > 2)
     .map(([word]) => word);
 
-  const text = await cloudflareChat(
+  const text = await visionChat(
     {
       temperature: 0,
       max_completion_tokens: 256,
@@ -279,11 +280,12 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'The request could not be read.' }, { status: 400 });
   }
 
-  if (!(await cloudflareAiConfigured())) {
+  const hasGroq = (await getGroqApiKeys()).length > 0;
+  if (!hasGroq && !(await cloudflareAiConfigured())) {
     return NextResponse.json(
       {
         error:
-          'Add Cloudflare Account ID and Workers AI API token in Admin → Settings for listing SEO.',
+          'Add a free Groq API key (recommended) or Cloudflare Workers AI in Admin → Settings for listing SEO.',
       },
       { status: 500 },
     );
@@ -302,7 +304,7 @@ export async function POST(request: Request) {
   }
 
   try {
-    const text = await cloudflareChat(
+    const text = await visionChat(
       {
         temperature: 0.4,
         max_completion_tokens: 2048,
@@ -328,7 +330,7 @@ export async function POST(request: Request) {
     const listing = parseListing(text);
     if (!listing) {
       return NextResponse.json(
-        { error: 'Cloudflare AI did not return a usable listing. Try again.' },
+        { error: 'The AI did not return a usable listing. Try again.' },
         { status: 502 },
       );
     }
@@ -337,7 +339,7 @@ export async function POST(request: Request) {
     const tags = uniqueTags(listing.tags);
     if (tags.length < 8) {
       return NextResponse.json(
-        { error: 'Cloudflare AI did not return enough tags. Try again.' },
+        { error: 'The AI did not return enough tags. Try again.' },
         { status: 502 },
       );
     }

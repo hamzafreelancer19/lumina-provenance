@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { authorizeTool } from '@/lib/access';
-import { cloudflareAiConfigured, cloudflareChat } from '@/lib/cloudflare-ai';
+import { cloudflareAiConfigured, visionChat } from '@/lib/cloudflare-ai';
+import { getGroqApiKeys } from '@/lib/groq';
 import { logActivity } from '@/lib/store';
 
 export const maxDuration = 60;
@@ -66,11 +67,12 @@ export async function POST(request: Request) {
   const access = await authorizeTool(request, 'keywords');
   if (access.response) return access.response;
 
-  if (!(await cloudflareAiConfigured())) {
+  const hasGroq = (await getGroqApiKeys()).length > 0;
+  if (!hasGroq && !(await cloudflareAiConfigured())) {
     return NextResponse.json(
       {
         error:
-          'Add Cloudflare Account ID and Workers AI API token in Admin → Settings for Keywords.',
+          'Add a free Groq API key (recommended) or Cloudflare Workers AI in Admin → Settings for Keywords.',
       },
       { status: 500 },
     );
@@ -86,7 +88,7 @@ export async function POST(request: Request) {
   }
 
   try {
-    const text = await cloudflareChat(
+    const text = await visionChat(
       {
         temperature: 0.1,
         max_completion_tokens: 120,

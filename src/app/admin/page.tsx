@@ -21,7 +21,7 @@ export default async function AdminPage() {
   if (!user || user.disabled || user.role !== 'admin') redirect('/');
 
   return (
-    <div className="min-h-[100dvh] bg-[#f6f7f4] text-zinc-900">
+    <div className="admin-shell min-h-[100dvh] text-zinc-900">
       <Header />
       <AdminPanel />
     </div>

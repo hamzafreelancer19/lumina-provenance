@@ -17,7 +17,7 @@ export default function SeoPage() {
       </div>
       <Footer
         label="Listing SEO"
-        note="Listings are written with Cloudflare Workers AI (Qwen 3.8 27B vision)."
+        note="Listings use free Groq vision first, with Cloudflare Qwen as backup."
       />
     </div>
   );

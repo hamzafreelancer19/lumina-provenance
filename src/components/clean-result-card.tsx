@@ -8,6 +8,10 @@ import type { CleanResult } from '@/lib/types';
 
 interface CleanResultCardProps {
   cleaned: CleanResult;
+  downloadFolderName: string | null;
+  downloadStatus: { kind: 'success' | 'error'; message: string } | null;
+  savingDownload: boolean;
+  onDownload: () => void;
   onReset?: () => void;
   onRename?: (name: string) => void;
 }
@@ -28,14 +32,21 @@ function sanitizeDownloadName(value: string, fallback: string) {
     .trim()
     .split(' ')
     .filter(Boolean)
-    .slice(0, 3)
+    .slice(0, 6)
     .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase());
 
-  const cleaned = words.join(' ').slice(0, 28).trim();
+  const cleaned = words.join(' ').trim();
   return `${cleaned || 'Product'}${extension}`;
 }
 
-export function CleanResultCard({ cleaned, onRename }: CleanResultCardProps) {
+export function CleanResultCard({
+  cleaned,
+  downloadFolderName,
+  downloadStatus,
+  savingDownload,
+  onDownload,
+  onRename,
+}: CleanResultCardProps) {
   const [copied, setCopied] = useState(false);
   const [autoBusy, setAutoBusy] = useState(false);
   const [autoError, setAutoError] = useState('');
@@ -151,16 +162,41 @@ export function CleanResultCard({ cleaned, onRename }: CleanResultCardProps) {
             )}
           </button>
 
-          <a
-            data-testid="link-download-clean-image"
-            href={cleaned.url}
-            download={cleaned.name}
-            className="focus-ring inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-zinc-900 px-5 py-2.5 text-xs font-semibold text-white hover:bg-zinc-800 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-white transition shadow-sm hover:shadow"
-          >
-            <ArrowDownToLine size={15} />
-            <span>Download {cleaned.name}</span>
-          </a>
+          {downloadFolderName ? (
+            <button
+              data-testid="link-download-clean-image"
+              type="button"
+              disabled={savingDownload}
+              onClick={onDownload}
+              className="focus-ring inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-zinc-900 px-5 py-2.5 text-xs font-semibold text-white hover:bg-zinc-800 disabled:cursor-wait disabled:opacity-60 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-white transition shadow-sm hover:shadow"
+            >
+              <ArrowDownToLine size={15} />
+              <span>{savingDownload ? 'Saving…' : `Save to ${downloadFolderName}`}</span>
+            </button>
+          ) : (
+            <a
+              data-testid="link-download-clean-image"
+              href={cleaned.url}
+              download={cleaned.name}
+              className="focus-ring inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-zinc-900 px-5 py-2.5 text-xs font-semibold text-white hover:bg-zinc-800 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-white transition shadow-sm hover:shadow"
+            >
+              <ArrowDownToLine size={15} />
+              <span>Download {cleaned.name}</span>
+            </a>
+          )}
         </div>
+        {downloadStatus && (
+          <p
+            role={downloadStatus.kind === 'error' ? 'alert' : 'status'}
+            className={`mt-3 text-xs ${
+              downloadStatus.kind === 'error'
+                ? 'text-amber-700 dark:text-amber-400'
+                : 'text-emerald-700 dark:text-emerald-400'
+            }`}
+          >
+            {downloadStatus.message}
+          </p>
+        )}
       </div>
 
       <div className="mt-6 grid grid-cols-1 sm:grid-cols-3 gap-3.5 border-t border-zinc-200/80 dark:border-zinc-800/80 pt-5 text-xs">

@@ -147,7 +147,7 @@ function SourceSlot({
 }
 
 export function BulkCreator() {
-  const [quality, setQuality] = useState<'auto' | 'low' | 'medium' | 'high'>('high');
+  const [quality, setQuality] = useState<'auto' | 'low' | 'medium' | 'high'>('auto');
   const [productImage, setProductImage] = useState<SourceImage | null>(null);
   const [images, setImages] = useState<GeneratedImage[]>([]);
   const [status, setStatus] = useState('');
@@ -294,10 +294,10 @@ export function BulkCreator() {
                 }
                 className="mt-2 w-full rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm outline-none focus:border-emerald-500"
               >
-                <option value="high">High (1536px, best)</option>
-                <option value="medium">Medium (1280px)</option>
-                <option value="auto">Auto (1408px)</option>
-                <option value="low">Low (faster)</option>
+                <option value="auto">Auto (free-tier Klein)</option>
+                <option value="medium">Medium (Klein 1024)</option>
+                <option value="low">Low (Klein 768)</option>
+                <option value="high">High (Flux Dev — needs paid quota)</option>
               </select>
             </label>
           </div>

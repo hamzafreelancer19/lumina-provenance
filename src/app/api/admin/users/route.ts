@@ -52,6 +52,7 @@ export async function PATCH(request: Request) {
     password?: unknown;
     tools?: unknown;
     creditsToAdd?: unknown;
+    unlimitedCredits?: unknown;
   };
   try {
     body = await request.json();
@@ -74,6 +75,9 @@ export async function PATCH(request: Request) {
       { status: 400 },
     );
   }
+  if (body.unlimitedCredits !== undefined && typeof body.unlimitedCredits !== 'boolean') {
+    return NextResponse.json({ error: 'Unlimited credits must be enabled or disabled.' }, { status: 400 });
+  }
 
   const role: Role | undefined = body.role === 'admin' || body.role === 'member' ? body.role : undefined;
   try {
@@ -84,6 +88,8 @@ export async function PATCH(request: Request) {
       password: typeof body.password === 'string' ? body.password : undefined,
       tools: body.tools,
       creditsToAdd: typeof body.creditsToAdd === 'number' ? body.creditsToAdd : undefined,
+      unlimitedCredits:
+        typeof body.unlimitedCredits === 'boolean' ? body.unlimitedCredits : undefined,
     });
     await logActivity(result.user.username, 'user.update', `Updated ${user.username}`);
     if (typeof body.creditsToAdd === 'number' && body.creditsToAdd > 0) {
@@ -91,6 +97,13 @@ export async function PATCH(request: Request) {
         result.user.username,
         'credits.add',
         `Added ${body.creditsToAdd} bonus credits to ${user.username}`,
+      );
+    }
+    if (typeof body.unlimitedCredits === 'boolean') {
+      await logActivity(
+        result.user.username,
+        'credits.unlimited',
+        `${body.unlimitedCredits ? 'Enabled' : 'Disabled'} unlimited credits for ${user.username}`,
       );
     }
     return NextResponse.json({ user });

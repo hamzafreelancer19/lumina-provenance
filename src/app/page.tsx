@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertCircle,
@@ -7,6 +8,7 @@ import {
   Check,
   CircleHelp,
   FileCheck2,
+  FolderOpen,
   Info,
   Lock,
   RotateCcw,
@@ -36,7 +38,10 @@ import { FaqSection } from '@/components/faq-section';
 import { Footer } from '@/components/footer';
 import { MobileActionBar } from '@/components/mobile-action-bar';
 import { WATERMARK_CREDIT_COST } from '@/lib/credit-policy';
+import { pickDownloadFolder, saveImageToFolder, supportsDownloadFolder } from '@/lib/download-folder';
 import { useStudio } from '@/components/studio-gate';
+
+type DownloadStatus = { kind: 'success' | 'error'; message: string } | null;
 
 function StudioApp() {
   const studio = useStudio();
@@ -45,8 +50,13 @@ function StudioApp() {
   const [cleaned, setCleaned] = useState<CleanResult | null>(null);
   const [workflow, setWorkflow] = useState<Workflow>('idle');
   const [error, setError] = useState('');
+  const [upgradeRequired, setUpgradeRequired] = useState(false);
   const [openGroup, setOpenGroup] = useState<string | null>(null);
   const [showEducation, setShowEducation] = useState(false);
+  const [canChooseDownloadFolder, setCanChooseDownloadFolder] = useState(false);
+  const [downloadFolder, setDownloadFolder] = useState<FileSystemDirectoryHandle | null>(null);
+  const [downloadStatus, setDownloadStatus] = useState<DownloadStatus>(null);
+  const [savingDownload, setSavingDownload] = useState(false);
 
   const educationRef = useRef<HTMLDivElement>(null);
   const auditCounterRef = useRef<number>(0);
@@ -57,11 +67,48 @@ function StudioApp() {
   // Pre-warm WASM SDK immediately on mount
   useEffect(() => {
     preloadC2pa();
+    setCanChooseDownloadFolder(supportsDownloadFolder());
   }, []);
+
+  const handleChooseDownloadFolder = async () => {
+    setDownloadStatus(null);
+    try {
+      const folder = await pickDownloadFolder();
+      setDownloadFolder(folder);
+    } catch (reason) {
+      if (reason instanceof DOMException && reason.name === 'AbortError') return;
+      setDownloadStatus({
+        kind: 'error',
+        message: reason instanceof Error ? reason.message : 'Could not select a folder.',
+      });
+    }
+  };
+
+  const handleDownload = async () => {
+    if (!cleaned || !downloadFolder) return;
+    setSavingDownload(true);
+    setDownloadStatus(null);
+    try {
+      const fileName = await saveImageToFolder(downloadFolder, cleaned.blob, cleaned.name);
+      setDownloadStatus({
+        kind: 'success',
+        message: `Saved ${fileName} to ${downloadFolder.name}.`,
+      });
+    } catch (reason) {
+      setDownloadStatus({
+        kind: 'error',
+        message: reason instanceof Error ? reason.message : 'Could not save the image to that folder.',
+      });
+    } finally {
+      setSavingDownload(false);
+    }
+  };
 
   const handleFile = useCallback(async (nextFile: File) => {
     // Increment counter to ignore stale out-of-order async promises
     const currentAuditId = ++auditCounterRef.current;
+    setDownloadStatus(null);
+    setUpgradeRequired(false);
 
     // Revoke previous clean URL if any
     if (cleanedUrlRef.current) {
@@ -142,6 +189,7 @@ function StudioApp() {
       const charge = await fetch('/api/credits/spend', { method: 'POST' });
       if (!charge.ok) {
         const data = (await charge.json().catch(() => null)) as { error?: string } | null;
+        if (charge.status === 402) setUpgradeRequired(true);
         throw new Error(data?.error || 'Could not use credits for this image.');
       }
 
@@ -163,6 +211,8 @@ function StudioApp() {
 
   const reset = () => {
     auditCounterRef.current++;
+    setDownloadStatus(null);
+    setUpgradeRequired(false);
     if (cleanedUrlRef.current) {
       URL.revokeObjectURL(cleanedUrlRef.current);
       cleanedUrlRef.current = null;
@@ -265,6 +315,32 @@ function StudioApp() {
                   </span>
                 </div>
 
+                {canChooseDownloadFolder && (
+                  <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-emerald-200/80 bg-emerald-50/70 p-3 dark:border-emerald-900/70 dark:bg-emerald-950/20">
+                    <div className="flex min-w-0 items-center gap-2.5">
+                      <FolderOpen size={17} className="shrink-0 text-emerald-700 dark:text-emerald-400" />
+                      <div className="min-w-0">
+                        <p className="text-xs font-semibold text-zinc-900 dark:text-zinc-100">
+                          {downloadFolder ? `Downloads go to ${downloadFolder.name}` : 'Choose where cleaned images are saved'}
+                        </p>
+                        <p className="mt-0.5 text-[11px] text-zinc-600 dark:text-zinc-400">
+                          {downloadFolder
+                            ? 'This folder stays selected for every image in this session.'
+                            : 'Select a folder before uploading your images.'}
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleChooseDownloadFolder}
+                      className="focus-ring inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-emerald-300 bg-white px-3 py-2 text-xs font-semibold text-emerald-800 hover:bg-emerald-50 dark:border-emerald-800 dark:bg-zinc-900 dark:text-emerald-300 dark:hover:bg-zinc-800"
+                    >
+                      <FolderOpen size={14} />
+                      {downloadFolder ? 'Change folder' : 'Choose folder'}
+                    </button>
+                  </div>
+                )}
+
                 <FileDrop
                   onFiles={(files) => {
                     const nextFile = files[0];
@@ -304,6 +380,14 @@ function StudioApp() {
               <div className="flex-1">
                 <p className="font-semibold text-rose-700 dark:text-rose-200">Audit inspection failed</p>
                 <p className="mt-0.5 text-rose-600/80 dark:text-rose-300/80">{error}</p>
+                {upgradeRequired && (
+                  <Link
+                    href="/pricing"
+                    className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-emerald-700 px-3 py-2 text-xs font-semibold text-white transition hover:bg-emerald-800"
+                  >
+                    View credit plans <ArrowRight size={13} />
+                  </Link>
+                )}
               </div>
               <button
                 data-testid="button-dismiss-error"
@@ -520,6 +604,10 @@ function StudioApp() {
           {cleaned && audit && (
             <CleanResultCard
               cleaned={cleaned}
+              downloadFolderName={downloadFolder?.name || null}
+              downloadStatus={downloadStatus}
+              savingDownload={savingDownload}
+              onDownload={handleDownload}
               onReset={reset}
               onRename={(name) =>
                 setCleaned((current) => (current ? { ...current, name } : current))
@@ -547,6 +635,10 @@ function StudioApp() {
         workflow={workflow}
         file={file}
         cleaned={cleaned}
+        downloadFolderName={downloadFolder?.name || null}
+        downloadStatus={downloadStatus}
+        savingDownload={savingDownload}
+        onDownload={handleDownload}
         foundCount={foundCount}
         onClean={handleClean}
         onReset={reset}

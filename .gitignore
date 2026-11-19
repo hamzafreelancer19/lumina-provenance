@@ -5,6 +5,7 @@ node_modules/
 
 # Next.js & Production build outputs
 .next/
+.next-dev/
 out/
 dist/
 build/

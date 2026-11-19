@@ -13,9 +13,15 @@ export const dynamic = 'force-dynamic';
 export default async function RegisterPage({
   searchParams,
 }: {
-  searchParams: Promise<{ next?: string }>;
+  searchParams: Promise<{ next?: string; ref?: string }>;
 }) {
   const params = await searchParams;
   const settings = await getSettings();
-  return <RegisterForm next={safeNext(params.next)} enabled={settings.registrationEnabled} />;
+  return (
+    <RegisterForm
+      next={safeNext(params.next)}
+      enabled={settings.registrationEnabled}
+      referralCode={params.ref || ''}
+    />
+  );
 }

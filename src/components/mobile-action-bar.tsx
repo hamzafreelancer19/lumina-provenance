@@ -5,6 +5,7 @@ import {
   ArrowDownToLine,
   Check,
   Copy,
+  FolderOpen,
   RotateCcw,
   ScanSearch,
   ShieldCheck,
@@ -18,8 +19,12 @@ interface MobileActionBarProps {
   file: File | null;
   cleaned: CleanResult | null;
   foundCount: number;
+  downloadFolderName: string | null;
+  downloadStatus: { kind: 'success' | 'error'; message: string } | null;
+  savingDownload: boolean;
   onClean: () => void;
   onReset: () => void;
+  onDownload: () => void;
 }
 
 export function MobileActionBar({
@@ -27,8 +32,12 @@ export function MobileActionBar({
   file,
   cleaned,
   foundCount,
+  downloadFolderName,
+  downloadStatus,
+  savingDownload,
   onClean,
   onReset,
+  onDownload,
 }: MobileActionBarProps) {
   const [copied, setCopied] = useState(false);
 
@@ -145,15 +154,37 @@ export function MobileActionBar({
                 )}
               </button>
 
-              <a
-                data-testid="button-mobile-download"
-                href={cleaned.url}
-                download={cleaned.name}
-                className="focus-ring inline-flex items-center justify-center gap-1.5 rounded-xl bg-emerald-600 px-4 py-2 text-xs font-bold text-white hover:bg-emerald-700 active:scale-95 transition shadow-sm"
-              >
-                <ArrowDownToLine size={14} />
-                <span>Download</span>
-              </a>
+              {downloadFolderName ? (
+                <button
+                  data-testid="button-mobile-download"
+                  type="button"
+                  title={
+                    downloadStatus?.kind === 'error'
+                      ? downloadStatus.message
+                      : `Save to ${downloadFolderName}`
+                  }
+                  disabled={savingDownload}
+                  onClick={onDownload}
+                  className="focus-ring inline-flex items-center justify-center gap-1.5 rounded-xl bg-emerald-600 px-4 py-2 text-xs font-bold text-white hover:bg-emerald-700 active:scale-95 disabled:opacity-60 transition shadow-sm"
+                >
+                  {downloadStatus?.kind === 'success' ? (
+                    <Check size={14} />
+                  ) : (
+                    <FolderOpen size={14} />
+                  )}
+                  <span>{savingDownload ? 'Saving…' : 'Save'}</span>
+                </button>
+              ) : (
+                <a
+                  data-testid="button-mobile-download"
+                  href={cleaned.url}
+                  download={cleaned.name}
+                  className="focus-ring inline-flex items-center justify-center gap-1.5 rounded-xl bg-emerald-600 px-4 py-2 text-xs font-bold text-white hover:bg-emerald-700 active:scale-95 transition shadow-sm"
+                >
+                  <ArrowDownToLine size={14} />
+                  <span>Download</span>
+                </a>
+              )}
 
               <button
                 type="button"

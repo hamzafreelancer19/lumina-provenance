@@ -4,6 +4,7 @@ import { cookies } from 'next/headers';
 import { dirname, join } from 'path';
 import type { SessionPayload } from '@/lib/auth';
 import { DAILY_CREDIT_ALLOWANCE, WATERMARK_CREDIT_COST } from '@/lib/credit-policy';
+import { DEFAULT_CREDIT_PLANS, REFERRAL_REWARD_CREDITS, type CreditPlan } from '@/lib/pricing';
 import { hashPassword, secretsMatch, verifyPassword } from '@/lib/password';
 
 export type Role = 'admin' | 'member';
@@ -26,6 +27,10 @@ export type StudioUser = {
   dailyCreditsRemaining: number;
   dailyCreditsDate: string;
   bonusCredits: number;
+  unlimitedCredits: boolean;
+  referralCode: string;
+  referredBy: string | null;
+  referralRewardedAt: number | null;
   createdAt: number;
   lastLoginAt: number | null;
 };
@@ -51,6 +56,10 @@ export type Settings = {
   groqApiKey?: string;
   cloudflareAccountId?: string;
   cloudflareApiToken?: string;
+  paymentMethodName?: string;
+  paymentRecipientName?: string;
+  paymentAccountNumber?: string;
+  paymentQrImageUrl?: string;
 };
 
 export type PublicSettings = {
@@ -63,6 +72,29 @@ export type PublicSettings = {
   maintenanceMode: boolean;
 };
 
+export type PaymentConfig = {
+  paymentMethodName: string;
+  paymentRecipientName: string;
+  paymentAccountNumber: string;
+  paymentQrImageUrl: string;
+};
+
+export type PaymentRequest = {
+  id: string;
+  userId: string;
+  username: string;
+  planId: string;
+  planName: string;
+  credits: number;
+  amount: number;
+  transactionId: string;
+  proofFileName: string | null;
+  status: 'pending' | 'approved' | 'rejected';
+  createdAt: number;
+  reviewedAt: number | null;
+  reviewedBy: string | null;
+};
+
 export type ApiKeyStatus = {
   configured: boolean;
   source: 'panel' | 'environment' | 'none';
@@ -72,6 +104,8 @@ export type ApiKeyStatus = {
 type Store = {
   users: StudioUser[];
   activity: Activity[];
+  paymentRequests: PaymentRequest[];
+  plans: CreditPlan[];
   settings: Settings;
   revision: number;
   deletedUsers: string[];
@@ -86,6 +120,25 @@ const ACTIVITY_LIMIT = 200;
 
 function utcDate(now = Date.now()) {
   return new Date(now).toISOString().slice(0, 10);
+}
+
+function referralCodeFor(id: string) {
+  return `LUM${createHash('sha256').update(id).digest('hex').slice(0, 10).toUpperCase()}`;
+}
+
+function uniqueReferralCode(existing: Set<string>, seed: string, preferred?: string) {
+  let code = preferred || referralCodeFor(seed);
+  if (!existing.has(code)) {
+    existing.add(code);
+    return code;
+  }
+  let suffix = 0;
+  while (existing.has(code)) {
+    suffix += 1;
+    code = referralCodeFor(`${seed}:${suffix}`);
+  }
+  existing.add(code);
+  return code;
 }
 
 function refreshUserCredits(user: StudioUser, now = Date.now()) {
@@ -129,6 +182,27 @@ function filePath() {
   return join(root, 'studio.json');
 }
 
+function paymentProofPath(name: string) {
+  if (!/^[0-9a-f-]+\.(png|jpg|webp)$/i.test(name)) throw new Error('Invalid payment proof.');
+  const root = process.env.VERCEL ? '/tmp' : join(process.cwd(), 'data');
+  return join(root, 'payment-proofs', name);
+}
+
+export function savePaymentProof(name: string, bytes: Uint8Array) {
+  const path = paymentProofPath(name);
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, bytes, { flag: 'wx' });
+}
+
+export function deletePaymentProof(name: string) {
+  const path = paymentProofPath(name);
+  if (existsSync(path)) unlinkSync(path);
+}
+
+export function readPaymentProof(name: string) {
+  return readFileSync(paymentProofPath(name));
+}
+
 function defaultSettings(): Settings {
   return {
     studioName: 'Lumina Studio',
@@ -142,12 +216,25 @@ function defaultSettings(): Settings {
 }
 
 function emptyStore(): Store {
-  return { users: [], activity: [], settings: defaultSettings(), revision: 0, deletedUsers: [] };
+  return {
+    users: [],
+    activity: [],
+    paymentRequests: [],
+    plans: DEFAULT_CREDIT_PLANS.map((plan) => ({ ...plan })),
+    settings: defaultSettings(),
+    revision: 0,
+    deletedUsers: [],
+  };
 }
 
 function normalize(value: Store): Store {
-  return {
-    users: (Array.isArray(value.users) ? value.users : []).map((user) => ({
+  const referralCodes = new Set<string>();
+  const users = (Array.isArray(value.users) ? value.users : []).map((user) => {
+    const referralCode =
+      typeof user.referralCode === 'string' && /^LUM[A-Z0-9]{10}$/.test(user.referralCode)
+        ? user.referralCode
+        : referralCodeFor(user.id);
+    return {
       ...user,
       tools: normalizeUserTools(user.tools),
       dailyCreditsRemaining: Number.isSafeInteger(user.dailyCreditsRemaining)
@@ -158,8 +245,24 @@ function normalize(value: Store): Store {
       bonusCredits: Number.isSafeInteger(user.bonusCredits)
         ? Math.max(0, user.bonusCredits)
         : 0,
-    })),
+      unlimitedCredits: user.unlimitedCredits === true,
+      referralCode: uniqueReferralCode(referralCodes, user.id, referralCode),
+      referredBy: typeof user.referredBy === 'string' ? user.referredBy : null,
+      referralRewardedAt:
+        typeof user.referralRewardedAt === 'number' ? user.referralRewardedAt : null,
+    };
+  });
+  return {
+    users,
     activity: Array.isArray(value.activity) ? value.activity : [],
+    paymentRequests: Array.isArray(value.paymentRequests) ? value.paymentRequests : [],
+    plans: Array.isArray(value.plans)
+      ? value.plans.map((plan) => ({
+          ...plan,
+          active: plan.active === true,
+          popular: plan.popular === true,
+        }))
+      : DEFAULT_CREDIT_PLANS.map((plan) => ({ ...plan })),
     settings: { ...defaultSettings(), ...(value.settings || {}) },
     revision: typeof value.revision === 'number' ? value.revision : 0,
     deletedUsers: Array.isArray(value.deletedUsers) ? value.deletedUsers.map((name) => name.toLowerCase()) : [],
@@ -170,6 +273,17 @@ function absorb(base: Store, extra: Store | null): Store {
   if (!extra) return base;
   const deleted = new Set([...(base.deletedUsers || []), ...(extra.deletedUsers || [])]);
   const extraWins = (extra.revision || 0) >= (base.revision || 0);
+  const paymentRequests = new Map<string, PaymentRequest>();
+  for (const request of [...(base.paymentRequests || []), ...(extra.paymentRequests || [])]) {
+    const current = paymentRequests.get(request.id);
+    if (
+      !current ||
+      (request.status !== 'pending' && current.status === 'pending') ||
+      (request.reviewedAt !== null && request.reviewedAt > (current.reviewedAt || 0))
+    ) {
+      paymentRequests.set(request.id, request);
+    }
+  }
   const settings = extraWins
     ? {
         ...extra.settings,
@@ -198,6 +312,8 @@ function absorb(base: Store, extra: Store | null): Store {
     users: [...map.values()],
     settings,
     activity: base.activity.length >= extra.activity.length ? base.activity : extra.activity,
+    paymentRequests: [...paymentRequests.values()].sort((a, b) => b.createdAt - a.createdAt),
+    plans: extraWins ? extra.plans : base.plans,
     revision: Math.max(base.revision || 0, extra.revision || 0),
     deletedUsers: [...deleted],
   };
@@ -241,6 +357,8 @@ async function writeDirCookie(store: Store) {
   const copy: Store = {
     ...store,
     activity: [],
+    paymentRequests: [],
+    plans: store.plans.map((plan) => ({ ...plan })),
     settings: { ...store.settings },
   };
   delete copy.settings.xaiApiKey;
@@ -321,6 +439,10 @@ function addEnvAdmin(store: Store, username: string, password: string, displayNa
     dailyCreditsRemaining: DAILY_CREDIT_ALLOWANCE,
     dailyCreditsDate: utcDate(),
     bonusCredits: 0,
+    unlimitedCredits: false,
+    referralCode: uniqueReferralCode(new Set(store.users.map((user) => user.referralCode)), envUserId(username)),
+    referredBy: null,
+    referralRewardedAt: null,
     createdAt: Date.now(),
     lastLoginAt: null,
   });
@@ -366,12 +488,16 @@ function updateStore<T>(mutator: (store: Store) => T): Promise<T> {
     const before = JSON.stringify({
       users: store.users,
       settings: store.settings,
+      paymentRequests: store.paymentRequests,
+      plans: store.plans,
       deletedUsers: store.deletedUsers,
     });
     result = mutator(store);
     const after = JSON.stringify({
       users: store.users,
       settings: store.settings,
+      paymentRequests: store.paymentRequests,
+      plans: store.plans,
       deletedUsers: store.deletedUsers,
     });
     if (changedBySeed || before !== after) store.revision = Date.now();
@@ -442,6 +568,7 @@ export function createStudioUser(input: {
   password: string;
   role: Role;
   tools?: unknown;
+  referralCode?: string;
 }) {
   const username = input.username.trim();
   const displayName = input.displayName.trim() || username;
@@ -460,10 +587,16 @@ export function createStudioUser(input: {
     if (store.users.some((user) => user.username.toLowerCase() === username.toLowerCase())) {
       throw new Error('That username is already in use.');
     }
+    const referralCode = input.referralCode?.trim().toUpperCase();
+    const referrer = referralCode
+      ? store.users.find((user) => user.referralCode === referralCode && !user.disabled)
+      : undefined;
+    if (referralCode && !referrer) throw new Error('That referral link is invalid or inactive.');
     store.deletedUsers = store.deletedUsers.filter((name) => name !== username.toLowerCase());
     const now = Date.now();
+    const id = randomUUID();
     const user: StudioUser = {
-      id: randomUUID(),
+      id,
       username,
       displayName,
       passwordHash: hashPassword(input.password),
@@ -472,13 +605,40 @@ export function createStudioUser(input: {
       tools,
       dailyCreditsRemaining: DAILY_CREDIT_ALLOWANCE,
       dailyCreditsDate: utcDate(now),
-      bonusCredits: 0,
+      bonusCredits: referrer ? REFERRAL_REWARD_CREDITS : 0,
+      unlimitedCredits: false,
+      referralCode: uniqueReferralCode(new Set(store.users.map((item) => item.referralCode)), id),
+      referredBy: referrer?.referralCode || null,
+      referralRewardedAt: referrer ? now : null,
       createdAt: now,
       lastLoginAt: null,
     };
+    if (referrer) referrer.bonusCredits += REFERRAL_REWARD_CREDITS;
     store.users.push(user);
     return toPublicUser(user);
   });
+}
+
+export function getReferralSummary(userId: string) {
+  return updateStore((store) => {
+    const user = store.users.find((item) => item.id === userId);
+    if (!user) throw new Error('User not found.');
+    const referrals = store.users.filter((item) => item.referredBy === user.referralCode);
+    return {
+      referralCode: user.referralCode,
+      referralCount: referrals.length,
+      rewardedReferrals: referrals.filter((item) => item.referralRewardedAt !== null).length,
+      creditsEarned: referrals.filter((item) => item.referralRewardedAt !== null).length * REFERRAL_REWARD_CREDITS,
+      rewardCredits: REFERRAL_REWARD_CREDITS,
+    };
+  });
+}
+
+export function getReferralOwnerUsername(referralCode: string) {
+  return updateStore(
+    (store) =>
+      store.users.find((item) => item.referralCode === referralCode)?.username || null,
+  );
 }
 
 export function spendWatermarkCredit(id: string) {
@@ -487,14 +647,122 @@ export function spendWatermarkCredit(id: string) {
     if (!user) throw new Error('User not found.');
     refreshUserCredits(user);
 
+    if (user.unlimitedCredits) {
+      return { user: toPublicUser(user), spent: true, unlimited: true };
+    }
+
     if (user.dailyCreditsRemaining + user.bonusCredits < WATERMARK_CREDIT_COST) {
-      return { user: toPublicUser(user), spent: false };
+      return { user: toPublicUser(user), spent: false, unlimited: false };
     }
 
     const fromDaily = Math.min(user.dailyCreditsRemaining, WATERMARK_CREDIT_COST);
     user.dailyCreditsRemaining -= fromDaily;
     user.bonusCredits -= WATERMARK_CREDIT_COST - fromDaily;
-    return { user: toPublicUser(user), spent: true };
+    return { user: toPublicUser(user), spent: true, unlimited: false };
+  });
+}
+
+export function createPaymentRequest(input: {
+  userId: string;
+  username: string;
+  planId: string;
+  transactionId: string;
+  proofFileName: string | null;
+}) {
+  if (!input.transactionId && !input.proofFileName) {
+    throw new Error('Enter a transaction ID or attach a payment screenshot.');
+  }
+  if (input.transactionId.length > 120) throw new Error('Transaction ID is too long.');
+
+  return updateStore((store) => {
+    const plan = store.plans.find((item) => item.id === input.planId && item.active);
+    if (!plan) throw new Error('That plan is no longer available. Refresh and choose an active plan.');
+    if (store.paymentRequests.some((item) => item.userId === input.userId && item.status === 'pending')) {
+      throw new Error('You already have a payment waiting for admin review.');
+    }
+    const request: PaymentRequest = {
+      id: randomUUID(),
+      userId: input.userId,
+      username: input.username,
+      planId: plan.id,
+      planName: plan.name,
+      credits: plan.credits,
+      amount: plan.price,
+      transactionId: input.transactionId,
+      proofFileName: input.proofFileName,
+      status: 'pending',
+      createdAt: Date.now(),
+      reviewedAt: null,
+      reviewedBy: null,
+    };
+    store.paymentRequests.unshift(request);
+    return request;
+  });
+}
+
+export function listPaymentRequests(userId?: string) {
+  return updateStore((store) =>
+    store.paymentRequests
+      .filter((item) => !userId || item.userId === userId)
+      .map(({ proofFileName: _proofFileName, ...item }) => item),
+  );
+}
+
+export function findPaymentRequest(id: string) {
+  return updateStore((store) => store.paymentRequests.find((item) => item.id === id) || null);
+}
+
+export function updatePaymentRequestStatus(id: string, adminUsername: string, status: 'approved' | 'rejected') {
+  return updateStore((store) => {
+    const payment = store.paymentRequests.find((item) => item.id === id);
+    if (!payment) throw new Error('Payment request not found.');
+    if (payment.status !== 'pending') throw new Error('This payment request has already been reviewed.');
+    if (status === 'approved') {
+      const user = store.users.find((item) => item.id === payment.userId);
+      if (!user || user.disabled) throw new Error('The account for this payment is unavailable.');
+      user.bonusCredits += payment.credits;
+    }
+    payment.status = status;
+    payment.reviewedAt = Date.now();
+    payment.reviewedBy = adminUsername;
+    return payment;
+  });
+}
+
+export function updateOwnProfile(
+  id: string,
+  patch: {
+    displayName?: string;
+    currentPassword?: string;
+    newPassword?: string;
+  },
+) {
+  const displayName = patch.displayName?.trim();
+  if (patch.displayName !== undefined && (!displayName || displayName.length > 60)) {
+    throw new Error('Display name must be 1–60 characters.');
+  }
+  if (patch.newPassword !== undefined) {
+    if (patch.newPassword.length < 8 || patch.newPassword.length > 200) {
+      throw new Error('New password must be 8–200 characters.');
+    }
+    if (!patch.currentPassword) {
+      throw new Error('Enter your current password to set a new password.');
+    }
+  }
+
+  return updateStore((store) => {
+    const user = store.users.find((item) => item.id === id);
+    if (!user) throw new Error('User not found.');
+
+    if (
+      patch.newPassword !== undefined &&
+      !verifyPassword(patch.currentPassword || '', user.passwordHash)
+    ) {
+      throw new Error('Your current password is incorrect.');
+    }
+    if (displayName !== undefined) user.displayName = displayName;
+    if (patch.newPassword !== undefined) user.passwordHash = hashPassword(patch.newPassword);
+    return toPublicUser(user);
   });
 }
 
@@ -512,6 +780,7 @@ export function updateStudioUser(
     password?: string;
     tools?: unknown;
     creditsToAdd?: number;
+    unlimitedCredits?: boolean;
   },
 ) {
   return updateStore((store) => {
@@ -525,6 +794,10 @@ export function updateStudioUser(
         throw new Error('Add between 0 and 1,000,000 credits.');
       }
       user.bonusCredits += patch.creditsToAdd;
+    }
+
+    if (typeof patch.unlimitedCredits === 'boolean') {
+      user.unlimitedCredits = patch.unlimitedCredits;
     }
 
     if (typeof patch.displayName === 'string') {
@@ -650,6 +923,124 @@ function cloudflareAiStatus(settings: Settings): ApiKeyStatus {
 
 export function getSettings() {
   return updateStore((store) => publicSettings(store.settings));
+}
+
+export function getPaymentConfig() {
+  return updateStore((store) => ({
+    paymentMethodName: store.settings.paymentMethodName || '',
+    paymentRecipientName: store.settings.paymentRecipientName || '',
+    paymentAccountNumber: store.settings.paymentAccountNumber || '',
+    paymentQrImageUrl: store.settings.paymentQrImageUrl || '',
+  }));
+}
+
+export function listCreditPlans(activeOnly = false) {
+  return updateStore((store) =>
+    store.plans
+      .filter((plan) => !activeOnly || plan.active)
+      .map((plan) => ({ ...plan }))
+      .sort((a, b) => a.price - b.price),
+  );
+}
+
+export function getCreditPlan(id: string) {
+  return updateStore((store) => {
+    const plan = store.plans.find((item) => item.id === id);
+    return plan ? { ...plan } : null;
+  });
+}
+
+export function saveCreditPlan(input: {
+  id?: string;
+  name: string;
+  credits: number;
+  price: number;
+  description: string;
+  active: boolean;
+  popular: boolean;
+}) {
+  const name = input.name.trim();
+  const description = input.description.trim();
+  if (!name || name.length > 40) throw new Error('Plan name must be 1–40 characters.');
+  if (!Number.isSafeInteger(input.credits) || input.credits < 1 || input.credits > 1_000_000) {
+    throw new Error('Credits must be between 1 and 1,000,000.');
+  }
+  if (!Number.isFinite(input.price) || input.price < 0.55 || input.price > 2) {
+    throw new Error('Plan price must be between $0.55 and $2.00.');
+  }
+  if (!description || description.length > 120) {
+    throw new Error('Plan description must be 1–120 characters.');
+  }
+  return updateStore((store) => {
+    let id = input.id?.trim();
+    if (id) {
+      const current = store.plans.find((plan) => plan.id === id);
+      if (!current) throw new Error('Plan not found.');
+    } else {
+      const base = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 32) || 'plan';
+      id = base;
+      let suffix = 2;
+      while (store.plans.some((plan) => plan.id === id)) id = `${base}-${suffix++}`;
+    }
+    const plan: CreditPlan = {
+      id,
+      name,
+      credits: input.credits,
+      price: Math.round(input.price * 100) / 100,
+      description,
+      active: input.active,
+      popular: input.popular,
+    };
+    const index = store.plans.findIndex((item) => item.id === id);
+    if (index < 0) store.plans.push(plan);
+    else store.plans[index] = plan;
+    return plan;
+  });
+}
+
+export function setCreditPlanActive(id: string, active: boolean) {
+  return updateStore((store) => {
+    const plan = store.plans.find((item) => item.id === id);
+    if (!plan) throw new Error('Plan not found.');
+    if (!active && plan.active && store.plans.filter((item) => item.active).length <= 1) {
+      throw new Error('Keep at least one plan active for users.');
+    }
+    plan.active = active;
+    return { ...plan };
+  });
+}
+
+export function savePaymentConfig(patch: PaymentConfig) {
+  const paymentMethodName = patch.paymentMethodName.trim();
+  const paymentRecipientName = patch.paymentRecipientName.trim();
+  const paymentAccountNumber = patch.paymentAccountNumber.trim();
+  const paymentQrImageUrl = patch.paymentQrImageUrl.trim();
+  if ([paymentMethodName, paymentRecipientName, paymentAccountNumber].some((value) => !value)) {
+    throw new Error('Enter the payment method, receiver name, and account number.');
+  }
+  if (paymentMethodName.length > 50 || paymentRecipientName.length > 80 || paymentAccountNumber.length > 80) {
+    throw new Error('Payment details are too long.');
+  }
+  if (
+    paymentQrImageUrl &&
+    (paymentQrImageUrl.length > 1000 ||
+      !/^https:\/\/\S+$/i.test(paymentQrImageUrl))
+  ) {
+    throw new Error('QR image must be a valid HTTPS image URL.');
+  }
+
+  return updateStore((store) => {
+    store.settings.paymentMethodName = paymentMethodName;
+    store.settings.paymentRecipientName = paymentRecipientName;
+    store.settings.paymentAccountNumber = paymentAccountNumber;
+    store.settings.paymentQrImageUrl = paymentQrImageUrl;
+    return {
+      paymentMethodName,
+      paymentRecipientName,
+      paymentAccountNumber,
+      paymentQrImageUrl,
+    };
+  });
 }
 
 export function getApiKey() {
@@ -783,6 +1174,14 @@ export function overview() {
     return {
       users: store.users.map(toPublicUser).sort((a, b) => a.username.localeCompare(b.username)),
       activity: store.activity.slice(0, 80),
+      paymentConfig: {
+        paymentMethodName: store.settings.paymentMethodName || '',
+        paymentRecipientName: store.settings.paymentRecipientName || '',
+        paymentAccountNumber: store.settings.paymentAccountNumber || '',
+        paymentQrImageUrl: store.settings.paymentQrImageUrl || '',
+      },
+      plans: store.plans.map((plan) => ({ ...plan })).sort((a, b) => a.price - b.price),
+      paymentRequests: store.paymentRequests.slice(0, 100),
       settings: publicSettings(store.settings),
       stats: {
         users: store.users.length,

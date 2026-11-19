@@ -7,7 +7,7 @@ export const maxDuration = 30;
 
 const DATA_URL = /^data:(image\/(?:png|jpeg|webp));base64,([A-Za-z0-9+/=\s]+)$/;
 
-/** Short readable name: 2–3 Title Case words, spaces only, no hyphens. */
+/** Readable, image-specific filename: 4–6 Title Case words, spaces only. */
 function clipName(value: unknown) {
   const words = String(value || '')
     .replace(/\.[a-z0-9]+$/i, '')
@@ -16,11 +16,10 @@ function clipName(value: unknown) {
     .trim()
     .split(/\s+/)
     .filter(Boolean)
-    .slice(0, 3)
+    .slice(0, 6)
     .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase());
 
-  const name = words.join(' ').slice(0, 28).trim();
-  return name || 'Product';
+  return words.length >= 4 ? words.join(' ') : '';
 }
 
 function imageDataUrl(value: unknown) {
@@ -48,15 +47,12 @@ function parseName(text: string) {
       const fromJson = clipName(payload.name);
       if (fromJson) return fromJson;
     } catch {
-      // fall through
+      return '';
     }
+    return '';
   }
 
-  const line = text
-    .split(/\r?\n/)
-    .map((part) => part.trim())
-    .find((part) => part && !part.startsWith('<') && !part.startsWith('{'));
-  return clipName(line || text);
+  return clipName(text.replace(/```(?:json)?|```/gi, '').replace(/^["'\s]+|["'\s]+$/g, ''));
 }
 
 export async function POST(request: Request) {
@@ -79,21 +75,21 @@ export async function POST(request: Request) {
 
     const content = await groqChat(
       {
-        temperature: 0.1,
-        max_completion_tokens: 60,
+        temperature: 0.35,
+        max_completion_tokens: 100,
         response_format: { type: 'json_object' },
         messages: [
           {
             role: 'system',
             content:
-              'You name product photo files. Reply with JSON only: {"name":"..."}. Use 2 or 3 short English words in Title Case, separated by spaces. No hyphens, no underscores, no extension, no quotes. Keep it under 28 characters. Example: {"name":"Blue Ceramic Mug"}',
+              'You are an attentive product-photo analyst who creates useful, distinct filenames. Inspect the image itself before naming it: identify the main subject/product, its visible color or material, design details, and visual style or setting when relevant. Reply with JSON only: {"name":"..."}. The name must contain 4 to 6 specific English words in Title Case, separated by spaces. No generic names like Product Image or Item Photo, no claims about details that are not visible, no hyphens, underscores, extension, or extra explanation. Example: {"name":"Speckled Blue Ceramic Coffee Mug"}',
           },
           {
             role: 'user',
             content: [
               {
                 type: 'text',
-                text: 'Name this product file in 2 or 3 short words only. Prefer product type plus one color or material. Bad: long-hyphenated-descriptive-slug. Good: {"name":"Gold Rim Mug"}',
+                text: 'Carefully inspect the whole image and name the main visible subject with 4 to 6 words. Be specific enough to distinguish this image from other product photos: include the product type plus visible color, material, pattern, shape, or setting as appropriate. Do not invent details. Return only {"name":"Four To Six Specific Words"}.',
               },
               {
                 type: 'image_url',

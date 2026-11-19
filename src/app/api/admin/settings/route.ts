@@ -4,10 +4,12 @@ import {
   clearApiKey,
   clearCloudflareAi,
   clearGroqApiKey,
+  getPaymentConfig,
   logActivity,
   saveApiKey,
   saveCloudflareAi,
   saveGroqApiKey,
+  savePaymentConfig,
   saveSettings,
 } from '@/lib/store';
 
@@ -32,11 +34,25 @@ export async function PATCH(request: Request) {
     cloudflareAccountId?: unknown;
     cloudflareApiToken?: unknown;
     clearCloudflareAi?: unknown;
+    paymentMethodName?: unknown;
+    paymentRecipientName?: unknown;
+    paymentAccountNumber?: unknown;
+    paymentQrImageUrl?: unknown;
   };
   try {
     body = await request.json();
   } catch {
     return NextResponse.json({ error: 'The request could not be read.' }, { status: 400 });
+  }
+
+  const paymentFields = [
+    body.paymentMethodName,
+    body.paymentRecipientName,
+    body.paymentAccountNumber,
+    body.paymentQrImageUrl,
+  ];
+  if (paymentFields.some((value) => value !== undefined && typeof value !== 'string')) {
+    return NextResponse.json({ error: 'Payment details must be text.' }, { status: 400 });
   }
 
   try {
@@ -80,6 +96,27 @@ export async function PATCH(request: Request) {
       });
       await logActivity(result.user.username, 'settings.update', 'Saved Cloudflare Workers AI credentials');
       return NextResponse.json({ cloudflare });
+    }
+
+    if (
+      typeof body.paymentMethodName === 'string' ||
+      typeof body.paymentRecipientName === 'string' ||
+      typeof body.paymentAccountNumber === 'string' ||
+      typeof body.paymentQrImageUrl === 'string'
+    ) {
+      const current = await getPaymentConfig();
+      const paymentConfig = await savePaymentConfig({
+        paymentMethodName:
+          typeof body.paymentMethodName === 'string' ? body.paymentMethodName : current.paymentMethodName,
+        paymentRecipientName:
+          typeof body.paymentRecipientName === 'string' ? body.paymentRecipientName : current.paymentRecipientName,
+        paymentAccountNumber:
+          typeof body.paymentAccountNumber === 'string' ? body.paymentAccountNumber : current.paymentAccountNumber,
+        paymentQrImageUrl:
+          typeof body.paymentQrImageUrl === 'string' ? body.paymentQrImageUrl : current.paymentQrImageUrl,
+      });
+      await logActivity(result.user.username, 'settings.update', 'Updated manual payment details');
+      return NextResponse.json({ paymentConfig });
     }
 
     const settings = await saveSettings({

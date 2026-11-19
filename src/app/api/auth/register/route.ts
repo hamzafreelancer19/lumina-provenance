@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createSessionToken, sessionCookieOptions } from '@/lib/auth';
-import { createStudioUser, getSettings, logActivity } from '@/lib/store';
+import { createStudioUser, getReferralOwnerUsername, getSettings, logActivity } from '@/lib/store';
 
 export const runtime = 'nodejs';
 
@@ -52,7 +52,7 @@ export async function POST(request: Request) {
     );
   }
 
-  let body: { username?: unknown; displayName?: unknown; password?: unknown };
+  let body: { username?: unknown; displayName?: unknown; password?: unknown; referralCode?: unknown };
   try {
     body = await request.json();
   } catch {
@@ -69,8 +69,16 @@ export async function POST(request: Request) {
       displayName,
       password,
       role: 'member',
+      referralCode: typeof body.referralCode === 'string' ? body.referralCode : undefined,
     });
     await logActivity(user.username, 'register', 'Created an account');
+    if (user.referredBy) {
+      await logActivity(user.username, 'referral.reward', 'Received 300 bonus credits for signing up with a referral');
+      const referrerUsername = await getReferralOwnerUsername(user.referredBy);
+      if (referrerUsername) {
+        await logActivity(referrerUsername, 'referral.reward', `Earned 300 bonus credits by referring ${user.username}`);
+      }
+    }
     const response = NextResponse.json({ ok: true, role: user.role });
     response.cookies.set({
       ...sessionCookieOptions(),

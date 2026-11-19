@@ -141,6 +141,13 @@ input {
     linear-gradient(180deg, #fafafa 0%, #f4f4f6 100%);
 }
 
+.admin-shell {
+  background:
+    radial-gradient(ellipse 70% 42% at 12% -8%, rgba(16, 185, 129, 0.12), transparent 55%),
+    radial-gradient(ellipse 50% 36% at 92% 8%, rgba(24, 24, 27, 0.04), transparent 50%),
+    linear-gradient(180deg, #f7f8f5 0%, #eef1ec 48%, #f4f5f2 100%);
+}
+
 .dark .app-shell {
   background:
     radial-gradient(ellipse 80% 50% at 50% -20%, rgba(120, 119, 198, 0.08), transparent),

@@ -8,17 +8,18 @@ export const maxDuration = 300;
 const QUALITIES = new Set(['low', 'medium', 'high', 'auto']);
 
 function settingsForQuality(quality: string) {
+  // Prefer the cheap Klein model on free Cloudflare plans.
+  // High still tries Flux 2 Dev, then falls back to Klein if neurons are exhausted.
   if (quality === 'high') {
-    return { size: 1536, steps: 32, guidance: 4.5 };
+    return { size: 1280, steps: 28, guidance: 4.5, preferFast: false };
   }
   if (quality === 'medium') {
-    return { size: 1280, steps: 28, guidance: 4 };
+    return { size: 1024, steps: 4, guidance: 4, preferFast: true };
   }
   if (quality === 'low') {
-    return { size: 1024, steps: 20, guidance: 3.5 };
+    return { size: 768, steps: 4, guidance: 3.5, preferFast: true };
   }
-  // auto → high-quality default for mockups
-  return { size: 1408, steps: 28, guidance: 4 };
+  return { size: 1024, steps: 4, guidance: 4, preferFast: true };
 }
 
 function mockupPrompt(prompt: string) {
@@ -94,6 +95,7 @@ export async function POST(request: Request) {
     const finalPrompt = mockup ? mockupPrompt(prompt) : prompt.slice(0, 2048);
     const settings = settingsForQuality(quality);
     const images = [];
+    let provider = 'cloudflare-flux-2-klein-4b';
 
     for (let index = 0; index < count; index += 1) {
       if (request.signal.aborted) break;
@@ -104,9 +106,13 @@ export async function POST(request: Request) {
         height: settings.size,
         steps: settings.steps,
         guidance: settings.guidance,
+        preferFast: settings.preferFast,
         signal: request.signal,
       });
       images.push({ b64: image.b64, mime: image.mime });
+      provider = image.model.includes('flux-2-dev')
+        ? 'cloudflare-flux-2-dev'
+        : 'cloudflare-flux-2-klein-4b';
     }
 
     if (!images.length) {
@@ -120,7 +126,7 @@ export async function POST(request: Request) {
         `Generated ${images.length} Flux mockup image${images.length === 1 ? '' : 's'}`,
       );
     }
-    return NextResponse.json({ images, provider: 'cloudflare-flux-2-dev' });
+    return NextResponse.json({ images, provider });
   } catch (reason) {
     if (reason instanceof DOMException && reason.name === 'AbortError') {
       return NextResponse.json({ error: 'Stopped.' }, { status: 499 });

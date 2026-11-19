@@ -6,7 +6,15 @@ import { useRouter } from 'next/navigation';
 import { Eye, EyeOff, Loader2, UserPlus } from 'lucide-react';
 import { Mark } from '@/components/mark';
 
-export function RegisterForm({ next, enabled }: { next: string; enabled: boolean }) {
+export function RegisterForm({
+  next,
+  enabled,
+  referralCode,
+}: {
+  next: string;
+  enabled: boolean;
+  referralCode: string;
+}) {
   const router = useRouter();
   const [username, setUsername] = useState('');
   const [displayName, setDisplayName] = useState('');
@@ -30,7 +38,7 @@ export function RegisterForm({ next, enabled }: { next: string; enabled: boolean
       const response = await fetch('/api/auth/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, displayName, password }),
+        body: JSON.stringify({ username, displayName, password, referralCode }),
       });
       const data = (await response.json().catch(() => null)) as { error?: string; role?: string } | null;
       if (!response.ok) {
@@ -65,6 +73,11 @@ export function RegisterForm({ next, enabled }: { next: string; enabled: boolean
             <p className="mt-2 max-w-xs text-sm leading-6 text-zinc-500">
               {enabled ? 'New accounts can use the studio tools.' : 'Registration is currently turned off.'}
             </p>
+            {referralCode && (
+              <p className="mt-3 rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-800">
+                Referral reward: you and your inviter get 300 bonus credits
+              </p>
+            )}
           </div>
 
           {enabled ? (

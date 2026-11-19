@@ -1,19 +1,36 @@
 'use client';
 
-import { FormEvent, useCallback, useEffect, useState } from 'react';
+import { FormEvent, type ReactNode, useCallback, useEffect, useState } from 'react';
 import {
+  Activity as ActivityIcon,
+  CheckCircle2,
+  Cloud,
+  CreditCard,
+  ExternalLink,
   KeyRound,
+  Layers3,
   LayoutDashboard,
   Loader2,
   ScrollText,
   Settings,
   Shield,
+  Sparkles,
   UserPlus,
   Users,
+  XCircle,
 } from 'lucide-react';
 
 type Role = 'admin' | 'member';
-type Section = 'overview' | 'users' | 'activity' | 'settings';
+type Section = 'overview' | 'users' | 'plans' | 'payments' | 'activity' | 'settings';
+type CreditPlan = {
+  id: string;
+  name: string;
+  credits: number;
+  price: number;
+  description: string;
+  active: boolean;
+  popular: boolean;
+};
 
 type UserTools = {
   watermark: boolean;
@@ -32,6 +49,7 @@ type PublicUser = {
   credits: number;
   dailyCreditsRemaining: number;
   bonusCredits: number;
+  unlimitedCredits: boolean;
   createdAt: number;
   lastLoginAt: number | null;
 };
@@ -68,6 +86,29 @@ type StudioSettings = {
   maintenanceMode: boolean;
 };
 
+type PaymentConfig = {
+  paymentMethodName: string;
+  paymentRecipientName: string;
+  paymentAccountNumber: string;
+  paymentQrImageUrl: string;
+};
+
+type PaymentRequest = {
+  id: string;
+  userId: string;
+  username: string;
+  planId: string;
+  planName: string;
+  credits: number;
+  amount: number;
+  transactionId: string;
+  proofFileName: string | null;
+  status: 'pending' | 'approved' | 'rejected';
+  createdAt: number;
+  reviewedAt: number | null;
+  reviewedBy: string | null;
+};
+
 type ApiKeyStatus = {
   configured: boolean;
   source: 'panel' | 'environment' | 'none';
@@ -79,6 +120,9 @@ type Overview = {
   users: PublicUser[];
   activity: Activity[];
   settings: StudioSettings;
+  paymentConfig: PaymentConfig;
+  plans: CreditPlan[];
+  paymentRequests: PaymentRequest[];
   stats: {
     users: number;
     active: number;
@@ -95,11 +139,13 @@ type Overview = {
   cloudflare: ApiKeyStatus;
 };
 
-const nav: { id: Section; label: string; icon: typeof LayoutDashboard }[] = [
-  { id: 'overview', label: 'Overview', icon: LayoutDashboard },
-  { id: 'users', label: 'Users', icon: Users },
-  { id: 'activity', label: 'Activity', icon: ScrollText },
-  { id: 'settings', label: 'Settings', icon: Settings },
+const nav: { id: Section; label: string; icon: typeof LayoutDashboard; hint: string }[] = [
+  { id: 'overview', label: 'Overview', icon: LayoutDashboard, hint: 'Studio pulse' },
+  { id: 'users', label: 'Users', icon: Users, hint: 'Access & tools' },
+  { id: 'plans', label: 'Plans', icon: Layers3, hint: 'Credit packages' },
+  { id: 'payments', label: 'Payments', icon: CreditCard, hint: 'Review purchases' },
+  { id: 'activity', label: 'Activity', icon: ScrollText, hint: 'Recent events' },
+  { id: 'settings', label: 'Settings', icon: Settings, hint: 'Keys & pages' },
 ];
 
 const actionLabel: Record<string, string> = {
@@ -114,6 +160,11 @@ const actionLabel: Record<string, string> = {
   'user.update': 'User updated',
   'user.delete': 'User removed',
   'credits.add': 'Credits added',
+  'credits.unlimited': 'Unlimited credits',
+  'profile.update': 'Profile updated',
+  'payment.approved': 'Payment approved',
+  'payment.rejected': 'Payment rejected',
+  'plan.update': 'Credit plan updated',
   'settings.update': 'Settings',
 };
 
@@ -122,9 +173,73 @@ function when(value: number | null) {
   return new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(value);
 }
 
+function initials(name: string) {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return '?';
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return `${parts[0][0] || ''}${parts[1][0] || ''}`.toUpperCase();
+}
+
 async function readError(response: Response) {
   const data = (await response.json().catch(() => null)) as { error?: string } | null;
   return data?.error || 'Something went wrong.';
+}
+
+function Panel({ children, className = '' }: { children: ReactNode; className?: string }) {
+  return (
+    <div
+      className={`rounded-2xl border border-zinc-200/80 bg-white/90 shadow-[0_18px_40px_-34px_rgba(24,24,27,0.55)] backdrop-blur-sm ${className}`}
+    >
+      {children}
+    </div>
+  );
+}
+
+function Toggle({
+  checked,
+  onChange,
+  disabled = false,
+  label,
+}: {
+  checked: boolean;
+  onChange: (next: boolean) => void;
+  disabled?: boolean;
+  label: string;
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-label={label}
+      disabled={disabled}
+      onClick={() => onChange(!checked)}
+      className={`relative h-6 w-11 shrink-0 rounded-full transition ${
+        checked ? 'bg-emerald-600' : 'bg-zinc-300'
+      } disabled:cursor-not-allowed disabled:opacity-50`}
+    >
+      <span
+        className={`absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white shadow transition ${
+          checked ? 'translate-x-5' : 'translate-x-0'
+        }`}
+      />
+    </button>
+  );
+}
+
+function KeyBadge({ ok, label }: { ok: boolean; label: string }) {
+  return (
+    <span
+      className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold ${
+        ok
+          ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+          : 'border-amber-200 bg-amber-50 text-amber-900'
+      }`}
+    >
+      {ok ? <CheckCircle2 className="h-3.5 w-3.5" /> : <XCircle className="h-3.5 w-3.5" />}
+      {label}
+    </span>
+  );
 }
 
 export function AdminPanel() {
@@ -163,14 +278,22 @@ export function AdminPanel() {
     }
   }
 
+  const activeNav = nav.find((item) => item.id === section);
+
   return (
-    <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 px-4 py-6 sm:px-6 lg:flex-row">
-      <aside className="lg:w-56 lg:shrink-0">
-        <div className="rounded-3xl border border-white/80 bg-white p-3 shadow-[0_16px_50px_-32px_rgba(6,78,59,0.45)]">
-          <p className="px-3 pb-2 pt-1 font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-emerald-700">
-            Admin
-          </p>
-          <nav className="flex gap-1 overflow-x-auto lg:flex-col" aria-label="Admin">
+    <div className="mx-auto flex w-full max-w-6xl flex-col gap-5 px-4 py-6 sm:px-6 lg:flex-row lg:gap-7 lg:py-8">
+      <aside className="lg:sticky lg:top-20 lg:w-60 lg:shrink-0 lg:self-start">
+        <Panel className="overflow-hidden p-2">
+          <div className="rounded-xl bg-gradient-to-br from-zinc-900 via-zinc-900 to-emerald-950 px-3.5 py-4 text-white">
+            <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.2em] text-emerald-300/90">
+              Control
+            </p>
+            <h1 className="mt-1 font-display text-xl font-extrabold tracking-tight">Admin</h1>
+            <p className="mt-1 text-xs text-zinc-300">
+              {data?.settings.studioName || 'Lumina Studio'}
+            </p>
+          </div>
+          <nav className="mt-2 flex gap-1 overflow-x-auto p-1 lg:flex-col" aria-label="Admin">
             {nav.map((item) => {
               const Icon = item.icon;
               const active = section === item.id;
@@ -183,43 +306,85 @@ export function AdminPanel() {
                     setNotice('');
                     setError('');
                   }}
-                  className={`flex shrink-0 items-center gap-2 rounded-2xl px-3 py-2 text-sm font-semibold transition ${
-                    active ? 'bg-emerald-600 text-white' : 'text-zinc-600 hover:bg-zinc-100'
+                  className={`flex min-w-[8.5rem] shrink-0 items-center gap-2.5 rounded-xl px-3 py-2.5 text-left transition lg:min-w-0 ${
+                    active
+                      ? 'bg-emerald-600 text-white shadow-sm'
+                      : 'text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900'
                   }`}
                 >
-                  <Icon className="h-4 w-4" />
-                  {item.label}
+                  <Icon className={`h-4 w-4 shrink-0 ${active ? 'text-white' : 'text-zinc-400'}`} />
+                  <span className="min-w-0">
+                    <span className="block text-sm font-semibold leading-tight">{item.label}</span>
+                    <span className={`block text-[10px] ${active ? 'text-emerald-100' : 'text-zinc-400'}`}>
+                      {item.hint}
+                    </span>
+                  </span>
                 </button>
               );
             })}
           </nav>
-        </div>
+        </Panel>
       </aside>
 
-      <main className="min-w-0 flex-1">
+      <main className="min-w-0 flex-1 space-y-4">
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-emerald-700">
+              {activeNav?.hint}
+            </p>
+            <h2 className="font-display text-2xl font-extrabold tracking-tight text-zinc-900 sm:text-3xl">
+              {activeNav?.label}
+            </h2>
+          </div>
+          {data && (
+            <p className="rounded-full border border-zinc-200/80 bg-white/80 px-3 py-1 text-xs font-medium text-zinc-500">
+              Signed in as <span className="font-semibold text-zinc-800">{data.me.username}</span>
+            </p>
+          )}
+        </div>
+
         {error && (
-          <p className="mb-4 rounded-2xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700" role="alert">
+          <p
+            className="rounded-2xl border border-red-200 bg-red-50 px-3.5 py-2.5 text-sm text-red-700"
+            role="alert"
+          >
             {error}
           </p>
         )}
         {notice && (
-          <p className="mb-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+          <p className="rounded-2xl border border-emerald-200 bg-emerald-50 px-3.5 py-2.5 text-sm text-emerald-800">
             {notice}
           </p>
         )}
+
         {loading || !data ? (
-          <div className="flex h-48 items-center justify-center text-zinc-500">
+          <Panel className="flex h-56 items-center justify-center text-zinc-400">
             <Loader2 className="h-5 w-5 animate-spin" />
-          </div>
+          </Panel>
         ) : section === 'overview' ? (
           <OverviewSection data={data} />
         ) : section === 'users' ? (
           <UsersSection data={data} onChange={refresh} onNotice={setNotice} onError={setError} />
+        ) : section === 'payments' ? (
+          <PaymentRequestsSection
+            requests={data.paymentRequests}
+            onChange={refresh}
+            onNotice={setNotice}
+            onError={setError}
+          />
+        ) : section === 'plans' ? (
+          <CreditPlansSection
+            plans={data.plans}
+            onChange={refresh}
+            onNotice={setNotice}
+            onError={setError}
+          />
         ) : section === 'activity' ? (
           <ActivitySection activity={data.activity} />
         ) : (
           <SettingsSection
             settings={data.settings}
+            paymentConfig={data.paymentConfig}
             xai={data.xai}
             groq={data.groq}
             cloudflare={data.cloudflare}
@@ -235,34 +400,59 @@ export function AdminPanel() {
 
 function OverviewSection({ data }: { data: Overview }) {
   const cards = [
-    { label: 'Users', value: data.stats.users, note: `${data.stats.active} active` },
-    { label: 'Admins', value: data.stats.admins, note: 'Can open this panel' },
-    { label: 'Sign-ins, 24h', value: data.stats.logins24h, note: `${data.stats.events24h} events` },
-    { label: 'Watermark', value: data.stats.watermark, note: 'Cleans logged' },
-    { label: 'Mockups', value: data.stats.mockups, note: 'Image calls' },
-    { label: 'SEO', value: data.stats.seo, note: 'Listings written' },
-    { label: 'Keywords', value: data.stats.keywords, note: 'Thumbnail reads' },
+    { label: 'Users', value: data.stats.users, note: `${data.stats.active} active`, icon: Users },
+    { label: 'Admins', value: data.stats.admins, note: 'Full access', icon: Shield },
+    {
+      label: 'Sign-ins · 24h',
+      value: data.stats.logins24h,
+      note: `${data.stats.events24h} events`,
+      icon: ActivityIcon,
+    },
+    { label: 'Watermark', value: data.stats.watermark, note: 'Cleans logged', icon: Sparkles },
+    { label: 'Mockups', value: data.stats.mockups, note: 'Image calls', icon: Cloud },
+    { label: 'SEO', value: data.stats.seo, note: 'Listings written', icon: ScrollText },
+    { label: 'Keywords', value: data.stats.keywords, note: 'Thumbnail reads', icon: KeyRound },
   ];
 
   return (
     <section className="space-y-4">
-      <div>
-        <h1 className="font-display text-2xl font-extrabold tracking-tight">Overview</h1>
-        <p className="mt-1 text-sm text-zinc-500">
-          Signed in as {data.me.username}. Groq{' '}
-          {data.groq.configured ? `is set (${data.groq.hint})` : 'is missing'}; Cloudflare{' '}
-          {data.cloudflare.configured ? `is set (${data.cloudflare.hint})` : 'is missing'}.
-        </p>
-      </div>
+      <Panel className="flex flex-wrap items-center gap-2 px-4 py-3.5">
+        <span className="mr-1 text-xs font-semibold text-zinc-500">API status</span>
+        <KeyBadge ok={data.cloudflare.configured} label="Cloudflare" />
+        <KeyBadge ok={data.groq.configured} label="Groq" />
+        <KeyBadge ok={data.xai.configured} label="xAI" />
+        {data.settings.maintenanceMode && (
+          <span className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-900">
+            Maintenance on
+          </span>
+        )}
+      </Panel>
+
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-        {cards.map((card) => (
-          <article key={card.label} className="rounded-3xl border border-white bg-white p-4 shadow-sm">
-            <p className="text-xs font-semibold uppercase tracking-wide text-zinc-400">{card.label}</p>
-            <p className="mt-2 font-display text-3xl font-extrabold">{card.value}</p>
-            <p className="mt-1 text-sm text-zinc-500">{card.note}</p>
-          </article>
-        ))}
+        {cards.map((card) => {
+          const Icon = card.icon;
+          return (
+            <article
+              key={card.label}
+              className="rounded-2xl border border-zinc-200/80 bg-white/90 p-4 shadow-[0_14px_30px_-28px_rgba(24,24,27,0.5)]"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-zinc-400">
+                  {card.label}
+                </p>
+                <span className="rounded-lg bg-zinc-100 p-1.5 text-zinc-500">
+                  <Icon className="h-3.5 w-3.5" />
+                </span>
+              </div>
+              <p className="mt-3 font-display text-3xl font-extrabold tracking-tight text-zinc-900">
+                {card.value}
+              </p>
+              <p className="mt-1 text-sm text-zinc-500">{card.note}</p>
+            </article>
+          );
+        })}
       </div>
+
       <ActivitySection activity={data.activity.slice(0, 8)} compact />
     </section>
   );
@@ -270,27 +460,42 @@ function OverviewSection({ data }: { data: Overview }) {
 
 function ActivitySection({ activity, compact = false }: { activity: Activity[]; compact?: boolean }) {
   return (
-    <section className="rounded-3xl border border-white bg-white p-4 shadow-sm sm:p-5">
-      <h2 className="font-display text-lg font-extrabold">{compact ? 'Recent activity' : 'Activity'}</h2>
+    <Panel className="p-4 sm:p-5">
+      <div className="flex items-center justify-between gap-3">
+        <h3 className="font-display text-lg font-extrabold tracking-tight">
+          {compact ? 'Recent activity' : 'Activity'}
+        </h3>
+        <span className="rounded-full bg-zinc-100 px-2.5 py-0.5 text-[11px] font-semibold text-zinc-500">
+          {activity.length}
+        </span>
+      </div>
       {activity.length === 0 ? (
-        <p className="mt-3 text-sm text-zinc-500">No activity yet. Sign-ins and tool use will show up here.</p>
+        <p className="mt-4 text-sm text-zinc-500">
+          No activity yet. Sign-ins and tool use will show up here.
+        </p>
       ) : (
-        <ul className="mt-3 divide-y divide-zinc-100">
-          {activity.map((item) => (
-            <li key={item.id} className="flex flex-col gap-1 py-3 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <p className="text-sm font-semibold text-zinc-900">
-                  {actionLabel[item.action] || item.action}
-                  <span className="font-normal text-zinc-500"> · {item.username}</span>
-                </p>
-                <p className="text-sm text-zinc-500">{item.detail}</p>
+        <ul className="mt-4 space-y-0">
+          {activity.map((item, index) => (
+            <li key={item.id} className="relative flex gap-3 pb-4 last:pb-0">
+              {index < activity.length - 1 && (
+                <span className="absolute top-3 bottom-0 left-[7px] w-px bg-zinc-200" />
+              )}
+              <span className="relative z-10 mt-1.5 h-3.5 w-3.5 shrink-0 rounded-full border-2 border-white bg-emerald-500 shadow-sm" />
+              <div className="min-w-0 flex-1 rounded-xl border border-zinc-100 bg-zinc-50/70 px-3 py-2.5">
+                <div className="flex flex-wrap items-baseline justify-between gap-2">
+                  <p className="text-sm font-semibold text-zinc-900">
+                    {actionLabel[item.action] || item.action}
+                    <span className="font-normal text-zinc-500"> · {item.username}</span>
+                  </p>
+                  <time className="text-[11px] text-zinc-400">{when(item.at)}</time>
+                </div>
+                <p className="mt-0.5 text-sm text-zinc-500">{item.detail}</p>
               </div>
-              <time className="shrink-0 text-xs text-zinc-400">{when(item.at)}</time>
             </li>
           ))}
         </ul>
       )}
-    </section>
+    </Panel>
   );
 }
 
@@ -310,28 +515,27 @@ function UsersSection({
 
   return (
     <section className="space-y-4">
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <h1 className="font-display text-2xl font-extrabold tracking-tight">Users</h1>
-          <p className="mt-1 text-sm text-zinc-500">Members can use the tools. Admins can use this panel.</p>
-        </div>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="max-w-xl text-sm text-zinc-500">
+          Members use the tools you assign. Admins can open this panel and every page.
+        </p>
         <button
           type="button"
           onClick={() => {
             setEditing(null);
             setOpen(true);
           }}
-          className="inline-flex h-10 items-center gap-2 rounded-2xl bg-emerald-600 px-3 text-sm font-semibold text-white hover:bg-emerald-700"
+          className="inline-flex h-10 items-center gap-2 rounded-xl bg-zinc-900 px-3.5 text-sm font-semibold text-white transition hover:bg-zinc-800"
         >
           <UserPlus className="h-4 w-4" />
           Add user
         </button>
       </div>
 
-      <div className="overflow-hidden rounded-3xl border border-white bg-white shadow-sm">
+      <Panel className="overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[640px] text-left text-sm">
-            <thead className="bg-zinc-50 text-xs uppercase tracking-wide text-zinc-400">
+          <table className="w-full min-w-[800px] text-left text-sm">
+            <thead className="border-b border-zinc-100 bg-zinc-50/90 text-[11px] uppercase tracking-wide text-zinc-400">
               <tr>
                 <th className="px-4 py-3 font-semibold">User</th>
                 <th className="px-4 py-3 font-semibold">Role</th>
@@ -349,41 +553,86 @@ function UsersSection({
                   .filter((tool) => user.role === 'admin' || tools[tool.id])
                   .map((tool) => tool.label);
                 return (
-                  <tr key={user.id} className="border-t border-zinc-100">
-                    <td className="px-4 py-3">
-                      <p className="font-semibold">{user.displayName}</p>
-                      <p className="text-xs text-zinc-500">{user.username}</p>
+                  <tr
+                    key={user.id}
+                    className="border-t border-zinc-100 transition hover:bg-emerald-50/40"
+                  >
+                    <td className="px-4 py-3.5">
+                      <div className="flex items-center gap-3">
+                        <span className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-emerald-600 to-zinc-900 text-[11px] font-bold text-white">
+                          {initials(user.displayName || user.username)}
+                        </span>
+                        <div>
+                          <p className="font-semibold text-zinc-900">{user.displayName}</p>
+                          <p className="text-xs text-zinc-500">@{user.username}</p>
+                        </div>
+                      </div>
                     </td>
-                    <td className="px-4 py-3">
-                      <span className="inline-flex items-center gap-1 rounded-full bg-zinc-100 px-2 py-1 text-xs font-semibold text-zinc-700">
+                    <td className="px-4 py-3.5">
+                      <span
+                        className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-semibold ${
+                          user.role === 'admin'
+                            ? 'bg-emerald-50 text-emerald-800'
+                            : 'bg-zinc-100 text-zinc-700'
+                        }`}
+                      >
                         {user.role === 'admin' && <Shield className="h-3 w-3" />}
                         {user.role}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-xs text-zinc-600">
-                      {user.role === 'admin' ? 'All tools' : assigned.length ? assigned.join(', ') : 'None'}
+                    <td className="px-4 py-3.5">
+                      <div className="flex max-w-[220px] flex-wrap gap-1">
+                        {user.role === 'admin' || user.unlimitedCredits ? (
+                          <span className="rounded-md bg-zinc-100 px-1.5 py-0.5 text-[11px] font-medium text-zinc-600">
+                            All tools
+                          </span>
+                        ) : assigned.length ? (
+                          assigned.map((label) => (
+                            <span
+                              key={label}
+                              className="rounded-md bg-zinc-100 px-1.5 py-0.5 text-[11px] font-medium text-zinc-600"
+                            >
+                              {label}
+                            </span>
+                          ))
+                        ) : (
+                          <span className="text-xs text-zinc-400">None</span>
+                        )}
+                      </div>
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-4 py-3.5">
                       {user.role === 'admin' ? (
                         <span className="font-semibold text-emerald-700">Unlimited</span>
                       ) : (
-                        <span className="font-semibold tabular-nums text-zinc-900">{user.credits} total</span>
+                        <>
+                          <span className="font-semibold tabular-nums text-zinc-900">{user.credits}</span>
+                          <span className="ml-1 text-xs text-zinc-500">total</span>
+                        </>
                       )}
                     </td>
-                    <td className="px-4 py-3">
-                      <span className={user.disabled ? 'text-red-600' : 'text-emerald-700'}>
+                    <td className="px-4 py-3.5">
+                      <span
+                        className={`inline-flex items-center gap-1.5 text-xs font-semibold ${
+                          user.disabled ? 'text-red-600' : 'text-emerald-700'
+                        }`}
+                      >
+                        <span
+                          className={`h-1.5 w-1.5 rounded-full ${
+                            user.disabled ? 'bg-red-500' : 'bg-emerald-500'
+                          }`}
+                        />
                         {user.disabled ? 'Disabled' : 'Active'}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-zinc-500">{when(user.lastLoginAt)}</td>
-                    <td className="px-4 py-3 text-right">
+                    <td className="px-4 py-3.5 text-zinc-500">{when(user.lastLoginAt)}</td>
+                    <td className="px-4 py-3.5 text-right">
                       <button
                         type="button"
                         onClick={() => {
                           setEditing(user);
                           setOpen(true);
                         }}
-                        className="rounded-xl px-2 py-1 text-xs font-semibold text-emerald-700 hover:bg-emerald-50"
+                        className="rounded-lg px-2.5 py-1.5 text-xs font-semibold text-emerald-700 transition hover:bg-emerald-50"
                       >
                         Edit
                       </button>
@@ -394,7 +643,7 @@ function UsersSection({
             </tbody>
           </table>
         </div>
-      </div>
+      </Panel>
 
       {open && (
         <UserDialog
@@ -430,6 +679,7 @@ function UserDialog({
   const [displayName, setDisplayName] = useState(user?.displayName || '');
   const [password, setPassword] = useState('');
   const [creditsToAdd, setCreditsToAdd] = useState('');
+  const [unlimitedCredits, setUnlimitedCredits] = useState(user?.unlimitedCredits || false);
   const [role, setRole] = useState<Role>(user?.role || 'member');
   const [disabled, setDisabled] = useState(user?.disabled || false);
   const [tools, setTools] = useState<UserTools>(user?.tools || defaultTools());
@@ -446,7 +696,16 @@ function UserDialog({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(
           user
-            ? { id: user.id, displayName, role, disabled, password, tools, creditsToAdd: Number(creditsToAdd || 0) }
+            ? {
+                id: user.id,
+                displayName,
+                role,
+                disabled,
+                password,
+                tools,
+                creditsToAdd: Number(creditsToAdd || 0),
+                ...(unlimitedCredits !== user.unlimitedCredits ? { unlimitedCredits } : {}),
+              }
             : { username, displayName, role, password, tools },
         ),
       });
@@ -455,7 +714,9 @@ function UserDialog({
         user
           ? Number(creditsToAdd) > 0
             ? `User updated and ${creditsToAdd} bonus credits added.`
-            : 'User updated.'
+            : unlimitedCredits !== user.unlimitedCredits
+              ? `Unlimited credits ${unlimitedCredits ? 'enabled' : 'disabled'}.`
+              : 'User updated.'
           : 'User added. They can sign in now.',
       );
     } catch (reason) {
@@ -483,10 +744,20 @@ function UserDialog({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-zinc-950/40 p-4 sm:items-center">
-      <form onSubmit={onSubmit} className="w-full max-w-md rounded-3xl bg-white p-5 shadow-xl">
-        <h2 className="font-display text-xl font-extrabold">{user ? 'Edit user' : 'Add user'}</h2>
-        <div className="mt-4 space-y-3">
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-zinc-950/50 p-4 backdrop-blur-[2px] sm:items-center">
+      <form
+        onSubmit={onSubmit}
+        className="max-h-[calc(100dvh-2rem)] w-full max-w-md overflow-y-auto rounded-2xl border border-zinc-200 bg-white shadow-2xl"
+      >
+        <div className="border-b border-zinc-100 bg-zinc-50 px-5 py-4">
+          <h3 className="font-display text-xl font-extrabold tracking-tight">
+            {user ? 'Edit user' : 'Add user'}
+          </h3>
+          <p className="mt-0.5 text-xs text-zinc-500">
+            {user ? `@${user.username}` : 'Create a member or admin account'}
+          </p>
+        </div>
+        <div className="space-y-3 px-5 py-4">
           {!user && (
             <Field label="Username" value={username} onChange={setUsername} autoComplete="off" />
           )}
@@ -500,20 +771,32 @@ function UserDialog({
             placeholder={user ? 'Leave blank to keep the current password' : 'At least 8 characters'}
           />
           {user && role === 'admin' ? (
-            <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-3">
+            <div className="rounded-xl border border-emerald-200 bg-emerald-50/70 p-3">
               <p className="text-sm font-semibold text-emerald-900">Unlimited credits</p>
               <p className="mt-0.5 text-xs text-emerald-800">
                 Admins can remove watermarks without a credit limit.
               </p>
             </div>
           ) : user && (
-            <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-3">
-              <p className="text-sm font-semibold text-emerald-900">{user.credits} credits available</p>
+            <div className="rounded-xl border border-emerald-200 bg-emerald-50/70 p-3">
+              <p className="text-sm font-semibold text-emerald-900">
+                {unlimitedCredits ? 'Unlimited credits' : `${user.credits} credits available`}
+              </p>
               <p className="mt-0.5 text-xs text-emerald-800">
                 {user.dailyCreditsRemaining} daily + {user.bonusCredits} admin-granted. Daily credits reset at UTC midnight.
               </p>
+              <div className="mt-3 flex items-center justify-between rounded-lg border border-emerald-100 bg-white px-3 py-2.5">
+                <span className="text-sm font-medium text-zinc-700">Unlimited credits</span>
+                <Toggle
+                  label="Unlimited credits"
+                  checked={unlimitedCredits}
+                  onChange={setUnlimitedCredits}
+                />
+              </div>
               <label className="mt-3 block">
-                <span className="mb-1.5 block text-xs font-semibold text-zinc-600">Add bonus credits</span>
+                <span className="mb-1.5 block text-xs font-semibold text-zinc-600">
+                  Add bonus credits
+                </span>
                 <input
                   type="number"
                   min="0"
@@ -533,24 +816,24 @@ function UserDialog({
               value={role}
               onChange={(event) => setRole(event.target.value as Role)}
               disabled={isSelf}
-              className="h-11 w-full rounded-2xl border border-zinc-200 bg-zinc-50 px-3 text-sm outline-none focus:border-emerald-500 focus:bg-white"
+              className="h-11 w-full rounded-xl border border-zinc-200 bg-zinc-50 px-3 text-sm outline-none focus:border-emerald-500 focus:bg-white"
             >
               <option value="member">Member</option>
               <option value="admin">Admin</option>
             </select>
           </label>
           {user && (
-            <label className="flex items-center gap-2 text-sm text-zinc-700">
-              <input
-                type="checkbox"
+            <div className="flex items-center justify-between rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2.5">
+              <span className="text-sm font-medium text-zinc-700">Disabled</span>
+              <Toggle
+                label="Disabled"
                 checked={disabled}
                 disabled={isSelf}
-                onChange={(event) => setDisabled(event.target.checked)}
+                onChange={setDisabled}
               />
-              Disabled
-            </label>
+            </div>
           )}
-          <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-3">
+          <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-3">
             <p className="text-xs font-semibold text-zinc-600">Tools</p>
             <p className="mt-1 text-[11px] text-zinc-500">
               {role === 'admin'
@@ -559,21 +842,22 @@ function UserDialog({
             </p>
             <div className="mt-3 space-y-2">
               {toolLabels.map((tool) => (
-                <label key={tool.id} className="flex items-center gap-2 text-sm text-zinc-700">
-                  <input
-                    type="checkbox"
+                <div
+                  key={tool.id}
+                  className="flex items-center justify-between rounded-lg bg-white px-2.5 py-2"
+                >
+                  <span className="text-sm text-zinc-700">{tool.label}</span>
+                  <Toggle
+                    label={tool.label}
                     checked={tools[tool.id]}
-                    onChange={(event) =>
-                      setTools((current) => ({ ...current, [tool.id]: event.target.checked }))
-                    }
+                    onChange={(next) => setTools((current) => ({ ...current, [tool.id]: next }))}
                   />
-                  {tool.label}
-                </label>
+                </div>
               ))}
             </div>
           </div>
         </div>
-        <div className="mt-5 flex items-center justify-between gap-2">
+        <div className="flex items-center justify-between gap-2 border-t border-zinc-100 bg-zinc-50/80 px-5 py-3.5">
           {user ? (
             <button
               type="button"
@@ -587,13 +871,17 @@ function UserDialog({
             <span />
           )}
           <div className="flex gap-2">
-            <button type="button" onClick={onClose} className="rounded-2xl px-3 py-2 text-sm font-semibold text-zinc-600">
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-xl px-3 py-2 text-sm font-semibold text-zinc-600 hover:bg-zinc-100"
+            >
               Cancel
             </button>
             <button
               type="submit"
               disabled={pending}
-              className="inline-flex h-10 items-center gap-2 rounded-2xl bg-emerald-600 px-4 text-sm font-semibold text-white disabled:opacity-70"
+              className="inline-flex h-10 items-center gap-2 rounded-xl bg-emerald-600 px-4 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-70"
             >
               {pending && <Loader2 className="h-4 w-4 animate-spin" />}
               Save
@@ -632,14 +920,293 @@ function Field({
         placeholder={placeholder}
         autoComplete={autoComplete}
         onChange={(event) => onChange(event.target.value)}
-        className="h-11 w-full rounded-2xl border border-zinc-200 bg-zinc-50 px-3 text-sm outline-none focus:border-emerald-500 focus:bg-white"
+        className="h-11 w-full rounded-xl border border-zinc-200 bg-zinc-50 px-3 text-sm outline-none transition focus:border-emerald-500 focus:bg-white"
       />
     </label>
   );
 }
 
+function CreditPlansSection({
+  plans,
+  onChange,
+  onNotice,
+  onError,
+}: {
+  plans: CreditPlan[];
+  onChange: () => Promise<void>;
+  onNotice: (value: string) => void;
+  onError: (value: string) => void;
+}) {
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [name, setName] = useState('');
+  const [credits, setCredits] = useState('');
+  const [price, setPrice] = useState('');
+  const [description, setDescription] = useState('');
+  const [active, setActive] = useState(true);
+  const [popular, setPopular] = useState(false);
+  const [pending, setPending] = useState(false);
+
+  function reset() {
+    setEditingId(null);
+    setName('');
+    setCredits('');
+    setPrice('');
+    setDescription('');
+    setActive(true);
+    setPopular(false);
+  }
+
+  function edit(plan: CreditPlan) {
+    setEditingId(plan.id);
+    setName(plan.name);
+    setCredits(String(plan.credits));
+    setPrice(plan.price.toFixed(2));
+    setDescription(plan.description);
+    setActive(plan.active);
+    setPopular(plan.popular);
+    onError('');
+    onNotice('');
+  }
+
+  async function save(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setPending(true);
+    onError('');
+    try {
+      const response = await fetch('/api/admin/plans', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...(editingId ? { id: editingId } : {}),
+          name,
+          credits: Number(credits),
+          price: Number(price),
+          description,
+          active,
+          popular,
+        }),
+      });
+      if (!response.ok) throw new Error(await readError(response));
+      onNotice(editingId ? 'Credit plan updated.' : 'Credit plan created.');
+      reset();
+      await onChange();
+    } catch (reason) {
+      onError(reason instanceof Error ? reason.message : 'Could not save this plan.');
+    } finally {
+      setPending(false);
+    }
+  }
+
+  async function toggleActive(plan: CreditPlan) {
+    setPending(true);
+    onError('');
+    try {
+      const response = await fetch('/api/admin/plans', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: plan.id, active: !plan.active }),
+      });
+      if (!response.ok) throw new Error(await readError(response));
+      onNotice(`${plan.name} ${plan.active ? 'deactivated' : 'activated'}.`);
+      await onChange();
+    } catch (reason) {
+      onError(reason instanceof Error ? reason.message : 'Could not update this plan.');
+    } finally {
+      setPending(false);
+    }
+  }
+
+  return (
+    <div className="grid gap-4 xl:grid-cols-[1.05fr_0.95fr]">
+      <Panel className="overflow-hidden">
+        <div className="border-b border-zinc-100 px-5 py-4">
+          <h3 className="font-display text-lg font-extrabold tracking-tight">Credit plans</h3>
+          <p className="mt-1 text-sm text-zinc-500">Only active plans are shown to users on the pricing page.</p>
+        </div>
+        <div className="divide-y divide-zinc-100">
+          {plans.length ? plans.map((plan) => (
+            <div key={plan.id} className="flex flex-wrap items-center justify-between gap-3 px-5 py-4">
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="font-semibold text-zinc-900">{plan.name}</p>
+                  <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${plan.active ? 'bg-emerald-100 text-emerald-800' : 'bg-zinc-100 text-zinc-500'}`}>
+                    {plan.active ? 'Active' : 'Inactive'}
+                  </span>
+                  {plan.popular && <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-800">Popular</span>}
+                </div>
+                <p className="mt-1 text-xs text-zinc-500">
+                  {plan.credits.toLocaleString()} credits · ${plan.price.toFixed(2)} · {plan.description}
+                </p>
+              </div>
+              <div className="flex shrink-0 gap-2">
+                <button type="button" disabled={pending} onClick={() => edit(plan)} className="h-9 rounded-lg border border-zinc-200 px-3 text-xs font-semibold text-zinc-700 hover:bg-zinc-50 disabled:opacity-50">
+                  Edit
+                </button>
+                <button type="button" disabled={pending} onClick={() => void toggleActive(plan)} className={`h-9 rounded-lg px-3 text-xs font-semibold disabled:opacity-50 ${plan.active ? 'border border-amber-200 text-amber-800 hover:bg-amber-50' : 'bg-emerald-700 text-white hover:bg-emerald-800'}`}>
+                  {plan.active ? 'Deactivate' : 'Activate'}
+                </button>
+              </div>
+            </div>
+          )) : (
+            <p className="px-5 py-8 text-center text-sm text-zinc-500">No plans created yet.</p>
+          )}
+        </div>
+      </Panel>
+
+      <Panel className="p-5">
+        <div className="mb-4 flex items-start justify-between gap-3">
+          <div>
+            <h3 className="font-display text-lg font-extrabold tracking-tight">{editingId ? 'Edit plan' : 'Create a plan'}</h3>
+            <p className="mt-1 text-sm text-zinc-500">Prices must be between $0.55 and $2.00.</p>
+          </div>
+          {editingId && <button type="button" onClick={reset} className="text-xs font-semibold text-zinc-500 hover:text-zinc-900">Cancel edit</button>}
+        </div>
+        <form onSubmit={save} className="space-y-3">
+          <Field label="Plan name" value={name} onChange={setName} placeholder="e.g. Business" />
+          <Field label="Short description" value={description} onChange={setDescription} placeholder="Who this plan is for" />
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field label="Credits" value={credits} onChange={setCredits} type="number" placeholder="1500" />
+            <Field label="Price (USD)" value={price} onChange={setPrice} type="number" placeholder="1.25" />
+          </div>
+          <div className="flex flex-wrap gap-4 rounded-xl border border-zinc-100 p-3">
+            <label className="inline-flex items-center gap-2 text-sm text-zinc-700">
+              <input type="checkbox" checked={active} onChange={(event) => setActive(event.target.checked)} className="h-4 w-4 accent-emerald-700" />
+              Active for users
+            </label>
+            <label className="inline-flex items-center gap-2 text-sm text-zinc-700">
+              <input type="checkbox" checked={popular} onChange={(event) => setPopular(event.target.checked)} className="h-4 w-4 accent-emerald-700" />
+              Mark as popular
+            </label>
+          </div>
+          <button type="submit" disabled={pending} className="inline-flex h-10 items-center gap-2 rounded-xl bg-emerald-700 px-4 text-sm font-semibold text-white hover:bg-emerald-800 disabled:opacity-60">
+            {pending && <Loader2 className="h-4 w-4 animate-spin" />}
+            {editingId ? 'Save plan changes' : 'Create plan'}
+          </button>
+        </form>
+      </Panel>
+    </div>
+  );
+}
+
+function PaymentRequestsSection({
+  requests,
+  onChange,
+  onNotice,
+  onError,
+}: {
+  requests: PaymentRequest[];
+  onChange: () => Promise<void>;
+  onNotice: (value: string) => void;
+  onError: (value: string) => void;
+}) {
+  const [pendingId, setPendingId] = useState('');
+
+  async function review(id: string, status: 'approved' | 'rejected') {
+    setPendingId(id);
+    onError('');
+    try {
+      const response = await fetch('/api/admin/payments', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, status }),
+      });
+      if (!response.ok) throw new Error(await readError(response));
+      onNotice(status === 'approved' ? 'Payment approved and credits added.' : 'Payment request rejected.');
+      await onChange();
+    } catch (reason) {
+      onError(reason instanceof Error ? reason.message : 'Could not review the payment.');
+    } finally {
+      setPendingId('');
+    }
+  }
+
+  if (!requests.length) {
+    return (
+      <Panel className="flex min-h-48 flex-col items-center justify-center p-8 text-center">
+        <CreditCard className="h-8 w-8 text-zinc-300" />
+        <p className="mt-3 font-semibold text-zinc-700">No payment requests yet</p>
+        <p className="mt-1 text-sm text-zinc-500">Submitted credit purchases will appear here for review.</p>
+      </Panel>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      {requests.map((payment) => (
+        <Panel key={payment.id} className="overflow-hidden p-4 sm:p-5">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <div className="flex flex-wrap items-center gap-2">
+                <h3 className="font-display text-lg font-bold text-zinc-900">
+                  {payment.planName} · {payment.credits.toLocaleString()} credits
+                </h3>
+                <span className={`rounded-full px-2.5 py-1 text-[11px] font-semibold capitalize ${
+                  payment.status === 'pending'
+                    ? 'bg-amber-100 text-amber-800'
+                    : payment.status === 'approved'
+                      ? 'bg-emerald-100 text-emerald-800'
+                      : 'bg-zinc-100 text-zinc-600'
+                }`}>
+                  {payment.status}
+                </span>
+              </div>
+              <p className="mt-1 text-sm text-zinc-600">
+                @{payment.username} · ${payment.amount.toFixed(2)} · {when(payment.createdAt)}
+              </p>
+            </div>
+            {payment.status === 'pending' && (
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  disabled={pendingId === payment.id}
+                  onClick={() => void review(payment.id, 'rejected')}
+                  className="h-9 rounded-lg border border-zinc-200 px-3 text-xs font-semibold text-zinc-600 hover:bg-zinc-50 disabled:opacity-50"
+                >
+                  Reject
+                </button>
+                <button
+                  type="button"
+                  disabled={pendingId === payment.id}
+                  onClick={() => void review(payment.id, 'approved')}
+                  className="h-9 rounded-lg bg-emerald-700 px-3 text-xs font-semibold text-white hover:bg-emerald-800 disabled:opacity-50"
+                >
+                  {pendingId === payment.id ? 'Reviewing…' : 'Approve & add credits'}
+                </button>
+              </div>
+            )}
+          </div>
+          <div className="mt-4 grid gap-3 border-t border-zinc-100 pt-4 sm:grid-cols-2">
+            <div>
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-400">Transaction ID</p>
+              <p className="mt-1 break-all text-sm font-medium text-zinc-800">
+                {payment.transactionId || 'Not provided'}
+              </p>
+            </div>
+            {payment.proofFileName && (
+              <a
+                href={`/api/admin/payments/proof/${payment.id}`}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1.5 text-sm font-semibold text-emerald-700 hover:text-emerald-900"
+              >
+                View payment screenshot <ExternalLink className="h-3.5 w-3.5" />
+              </a>
+            )}
+          </div>
+          {payment.reviewedBy && (
+            <p className="mt-3 text-xs text-zinc-500">
+              Reviewed by @{payment.reviewedBy} · {payment.reviewedAt ? when(payment.reviewedAt) : ''}
+            </p>
+          )}
+        </Panel>
+      ))}
+    </div>
+  );
+}
+
 function SettingsSection({
   settings,
+  paymentConfig,
   xai,
   groq,
   cloudflare,
@@ -648,6 +1215,7 @@ function SettingsSection({
   onError,
 }: {
   settings: StudioSettings;
+  paymentConfig: PaymentConfig;
   xai: ApiKeyStatus;
   groq: ApiKeyStatus;
   cloudflare: ApiKeyStatus;
@@ -664,6 +1232,8 @@ function SettingsSection({
   const [keyPending, setKeyPending] = useState(false);
   const [groqPending, setGroqPending] = useState(false);
   const [cfPending, setCfPending] = useState(false);
+  const [paymentDraft, setPaymentDraft] = useState(paymentConfig);
+  const [paymentPending, setPaymentPending] = useState(false);
 
   async function onSubmit(event: FormEvent) {
     event.preventDefault();
@@ -690,10 +1260,26 @@ function SettingsSection({
     label: string;
     note: string;
   }[] = [
-    { key: 'watermarkEnabled', label: 'Watermark', note: 'Shown in the member menu. Untick to hide it immediately.' },
-    { key: 'mockupsEnabled', label: 'Mockups', note: 'Shown in the member menu. Untick to hide it immediately.' },
-    { key: 'seoEnabled', label: 'SEO', note: 'Shown in the member menu. Untick to hide it immediately.' },
-    { key: 'keywordsEnabled', label: 'Keywords', note: 'Shown in the member menu. Untick to hide it immediately.' },
+    {
+      key: 'watermarkEnabled',
+      label: 'Watermark',
+      note: 'Shown in the member menu. Untick to hide it immediately.',
+    },
+    {
+      key: 'mockupsEnabled',
+      label: 'Mockups',
+      note: 'Shown in the member menu. Untick to hide it immediately.',
+    },
+    {
+      key: 'seoEnabled',
+      label: 'SEO',
+      note: 'Shown in the member menu. Untick to hide it immediately.',
+    },
+    {
+      key: 'keywordsEnabled',
+      label: 'Keywords',
+      note: 'Shown in the member menu. Untick to hide it immediately.',
+    },
   ];
 
   async function saveFlag(patch: Partial<StudioSettings>) {
@@ -719,317 +1305,393 @@ function SettingsSection({
 
   return (
     <div className="space-y-4">
-      <div>
-        <h1 className="font-display text-2xl font-extrabold tracking-tight">Settings</h1>
-        <p className="mt-1 text-sm text-zinc-500">
-          Untick a page to hide it from members right away. Admins can still open every page.
-        </p>
-      </div>
-      <form
-        className="space-y-4 rounded-3xl border border-white bg-white p-5 shadow-sm"
-        onSubmit={async (event) => {
-          event.preventDefault();
-          setCfPending(true);
-          onError('');
-          try {
-            const response = await fetch('/api/admin/settings', {
-              method: 'PATCH',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                cloudflareAccountId: cfAccountId,
-                cloudflareApiToken: cfApiToken,
-              }),
-            });
-            if (!response.ok) throw new Error(await readError(response));
-            setCfAccountId('');
-            setCfApiToken('');
-            onNotice(
-              'Cloudflare Workers AI saved. SEO, Keywords, and Flux mockups will use it now.',
-            );
-            await onChange();
-          } catch (reason) {
-            onError(reason instanceof Error ? reason.message : 'Could not save Cloudflare credentials.');
-          } finally {
-            setCfPending(false);
-          }
-        }}
-      >
-        <div>
-          <h2 className="font-display text-lg font-extrabold">Cloudflare Workers AI</h2>
-          <p className="mt-1 text-sm text-zinc-500">
-            {cloudflare.configured
-              ? `Active ${cloudflare.hint}${cloudflare.source === 'environment' ? ' from the server environment' : ''}. Used for SEO, Keywords (Qwen), and Flux 2 Dev mockups.`
-              : 'Needed for SEO, Keywords, and mockups. Create a Workers AI API token in the Cloudflare dashboard, then paste Account ID and token here.'}
-          </p>
+      <p className="text-sm text-zinc-500">
+        Untick a page to hide it from members right away. Admins can still open every page.
+      </p>
+
+      <Panel className="overflow-hidden">
+        <div className="flex items-start justify-between gap-3 border-b border-zinc-100 px-5 py-4">
+          <div>
+            <h3 className="font-display text-lg font-extrabold tracking-tight">Cloudflare Workers AI</h3>
+            <p className="mt-1 text-sm text-zinc-500">
+              {cloudflare.configured
+                ? `Active ${cloudflare.hint}${cloudflare.source === 'environment' ? ' from the server environment' : ''}. Used for Flux mockups (Klein by default). Free plan: 10,000 neurons/day.`
+                : 'Needed for mockups. Create a Workers AI API token in the Cloudflare dashboard, then paste Account ID and token here.'}
+            </p>
+          </div>
+          <KeyBadge ok={cloudflare.configured} label={cloudflare.configured ? 'Ready' : 'Missing'} />
         </div>
-        <Field
-          label="Account ID"
-          value={cfAccountId}
-          onChange={setCfAccountId}
-          required={false}
-          autoComplete="off"
-          placeholder="Cloudflare account id"
-        />
-        <Field
-          label="Workers AI API token"
-          value={cfApiToken}
-          onChange={setCfApiToken}
-          type="password"
-          required={false}
-          autoComplete="off"
-          placeholder="Cloudflare API token"
-        />
-        <div className="flex flex-wrap gap-2">
-          <button
-            type="submit"
-            disabled={cfPending || cfAccountId.trim().length < 8 || cfApiToken.trim().length < 20}
-            className="inline-flex h-10 items-center gap-2 rounded-2xl bg-emerald-600 px-4 text-sm font-semibold text-white disabled:opacity-70"
-          >
-            {cfPending && <Loader2 className="h-4 w-4 animate-spin" />}
-            Save Cloudflare AI
-          </button>
-          {cloudflare.source === 'panel' && (
+        <form
+          className="space-y-3 px-5 py-4"
+          onSubmit={async (event) => {
+            event.preventDefault();
+            setCfPending(true);
+            onError('');
+            try {
+              const response = await fetch('/api/admin/settings', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  cloudflareAccountId: cfAccountId,
+                  cloudflareApiToken: cfApiToken,
+                }),
+              });
+              if (!response.ok) throw new Error(await readError(response));
+              setCfAccountId('');
+              setCfApiToken('');
+              onNotice(
+                'Cloudflare Workers AI saved. SEO, Keywords, and Flux mockups will use it now.',
+              );
+              await onChange();
+            } catch (reason) {
+              onError(
+                reason instanceof Error ? reason.message : 'Could not save Cloudflare credentials.',
+              );
+            } finally {
+              setCfPending(false);
+            }
+          }}
+        >
+          <Field
+            label="Account ID"
+            value={cfAccountId}
+            onChange={setCfAccountId}
+            required={false}
+            autoComplete="off"
+            placeholder="Cloudflare account id"
+          />
+          <Field
+            label="Workers AI API token"
+            value={cfApiToken}
+            onChange={setCfApiToken}
+            type="password"
+            required={false}
+            autoComplete="off"
+            placeholder="Cloudflare API token"
+          />
+          <div className="flex flex-wrap gap-2 pt-1">
             <button
-              type="button"
-              disabled={cfPending}
-              onClick={async () => {
-                setCfPending(true);
-                onError('');
-                try {
-                  const response = await fetch('/api/admin/settings', {
-                    method: 'PATCH',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ clearCloudflareAi: true }),
-                  });
-                  if (!response.ok) throw new Error(await readError(response));
-                  onNotice('Saved Cloudflare credentials removed.');
-                  await onChange();
-                } catch (reason) {
-                  onError(reason instanceof Error ? reason.message : 'Could not remove Cloudflare credentials.');
-                } finally {
-                  setCfPending(false);
-                }
-              }}
-              className="inline-flex h-10 items-center rounded-2xl border border-zinc-200 px-4 text-sm font-semibold text-zinc-700 disabled:opacity-70"
+              type="submit"
+              disabled={cfPending || cfAccountId.trim().length < 8 || cfApiToken.trim().length < 20}
+              className="inline-flex h-10 items-center gap-2 rounded-xl bg-emerald-600 px-4 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-70"
             >
-              Remove saved credentials
+              {cfPending && <Loader2 className="h-4 w-4 animate-spin" />}
+              Save Cloudflare AI
             </button>
-          )}
+            {cloudflare.source === 'panel' && (
+              <button
+                type="button"
+                disabled={cfPending}
+                onClick={async () => {
+                  setCfPending(true);
+                  onError('');
+                  try {
+                    const response = await fetch('/api/admin/settings', {
+                      method: 'PATCH',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ clearCloudflareAi: true }),
+                    });
+                    if (!response.ok) throw new Error(await readError(response));
+                    onNotice('Saved Cloudflare credentials removed.');
+                    await onChange();
+                  } catch (reason) {
+                    onError(
+                      reason instanceof Error
+                        ? reason.message
+                        : 'Could not remove Cloudflare credentials.',
+                    );
+                  } finally {
+                    setCfPending(false);
+                  }
+                }}
+                className="inline-flex h-10 items-center rounded-xl border border-zinc-200 px-4 text-sm font-semibold text-zinc-700 hover:bg-zinc-50 disabled:opacity-70"
+              >
+                Remove saved credentials
+              </button>
+            )}
+          </div>
+        </form>
+      </Panel>
+
+      <Panel className="overflow-hidden">
+        <div className="flex items-start justify-between gap-3 border-b border-zinc-100 px-5 py-4">
+          <div>
+            <h3 className="font-display text-lg font-extrabold tracking-tight">Groq API key</h3>
+            <p className="mt-1 text-sm text-zinc-500">
+              {groq.configured
+              ? `Active ${groq.hint}${groq.source === 'environment' ? ' from the server environment' : ''}. Used for auto-rename, SEO, Keywords, and mockup planning. Multiple keys: comma-separated.`
+              : 'No key yet. Paste from the Groq console. Auto-rename, SEO, Keywords, and mockup planning use it. Multiple keys: comma-separated.'}
+            </p>
+          </div>
+          <KeyBadge ok={groq.configured} label={groq.configured ? 'Ready' : 'Missing'} />
         </div>
-      </form>
-      <form
-        className="space-y-4 rounded-3xl border border-white bg-white p-5 shadow-sm"
-        onSubmit={async (event) => {
-          event.preventDefault();
-          setGroqPending(true);
-          onError('');
-          try {
-            const response = await fetch('/api/admin/settings', {
-              method: 'PATCH',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ groqApiKey: groqKey }),
-            });
-            if (!response.ok) throw new Error(await readError(response));
-            setGroqKey('');
-            onNotice('Groq key saved. Auto-rename and mockup planning will use it now.');
-            await onChange();
-          } catch (reason) {
-            onError(reason instanceof Error ? reason.message : 'Could not save the Groq API key.');
-          } finally {
-            setGroqPending(false);
-          }
-        }}
-      >
-        <div>
-          <h2 className="font-display text-lg font-extrabold">Groq API key</h2>
-          <p className="mt-1 text-sm text-zinc-500">
-            {groq.configured
-              ? `Active ${groq.hint}${groq.source === 'environment' ? ' from the server environment' : ''}. Used for auto-rename and mockup planning. Multiple keys: comma-separated.`
-              : 'No key yet. Paste from the Groq console. Auto-rename and mockup planning use it. Multiple keys: comma-separated.'}
-          </p>
-        </div>
-        <Field
-          label="Groq API key(s)"
-          value={groqKey}
-          onChange={setGroqKey}
-          type="password"
-          required={false}
-          autoComplete="off"
-          placeholder="gsk_... or gsk_key1,gsk_key2"
-        />
-        <div className="flex flex-wrap gap-2">
-          <button
-            type="submit"
-            disabled={groqPending || groqKey.trim().length < 12}
-            className="inline-flex h-10 items-center gap-2 rounded-2xl bg-emerald-600 px-4 text-sm font-semibold text-white disabled:opacity-70"
-          >
-            {groqPending && <Loader2 className="h-4 w-4 animate-spin" />}
-            Save Groq key
-          </button>
-          {groq.source === 'panel' && (
+        <form
+          className="space-y-3 px-5 py-4"
+          onSubmit={async (event) => {
+            event.preventDefault();
+            setGroqPending(true);
+            onError('');
+            try {
+              const response = await fetch('/api/admin/settings', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ groqApiKey: groqKey }),
+              });
+              if (!response.ok) throw new Error(await readError(response));
+              setGroqKey('');
+              onNotice('Groq key saved. Auto-rename, SEO, Keywords, and mockup planning will use it now.');
+              await onChange();
+            } catch (reason) {
+              onError(reason instanceof Error ? reason.message : 'Could not save the Groq API key.');
+            } finally {
+              setGroqPending(false);
+            }
+          }}
+        >
+          <Field
+            label="Groq API key(s)"
+            value={groqKey}
+            onChange={setGroqKey}
+            type="password"
+            required={false}
+            autoComplete="off"
+            placeholder="gsk_... or gsk_key1,gsk_key2"
+          />
+          <div className="flex flex-wrap gap-2 pt-1">
             <button
-              type="button"
-              disabled={groqPending}
-              onClick={async () => {
-                setGroqPending(true);
-                onError('');
-                try {
-                  const response = await fetch('/api/admin/settings', {
-                    method: 'PATCH',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ clearGroqApiKey: true }),
-                  });
-                  if (!response.ok) throw new Error(await readError(response));
-                  onNotice('Saved Groq key removed.');
-                  await onChange();
-                } catch (reason) {
-                  onError(reason instanceof Error ? reason.message : 'Could not remove the Groq API key.');
-                } finally {
-                  setGroqPending(false);
-                }
-              }}
-              className="inline-flex h-10 items-center rounded-2xl border border-zinc-200 px-4 text-sm font-semibold text-zinc-700 disabled:opacity-70"
+              type="submit"
+              disabled={groqPending || groqKey.trim().length < 12}
+              className="inline-flex h-10 items-center gap-2 rounded-xl bg-emerald-600 px-4 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-70"
             >
-              Remove saved key
+              {groqPending && <Loader2 className="h-4 w-4 animate-spin" />}
+              Save Groq key
             </button>
-          )}
+            {groq.source === 'panel' && (
+              <button
+                type="button"
+                disabled={groqPending}
+                onClick={async () => {
+                  setGroqPending(true);
+                  onError('');
+                  try {
+                    const response = await fetch('/api/admin/settings', {
+                      method: 'PATCH',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ clearGroqApiKey: true }),
+                    });
+                    if (!response.ok) throw new Error(await readError(response));
+                    onNotice('Saved Groq key removed.');
+                    await onChange();
+                  } catch (reason) {
+                    onError(
+                      reason instanceof Error ? reason.message : 'Could not remove the Groq API key.',
+                    );
+                  } finally {
+                    setGroqPending(false);
+                  }
+                }}
+                className="inline-flex h-10 items-center rounded-xl border border-zinc-200 px-4 text-sm font-semibold text-zinc-700 hover:bg-zinc-50 disabled:opacity-70"
+              >
+                Remove saved key
+              </button>
+            )}
+          </div>
+        </form>
+      </Panel>
+
+      <Panel className="overflow-hidden">
+        <div className="flex items-start justify-between gap-3 border-b border-zinc-100 px-5 py-4">
+          <div>
+            <h3 className="font-display text-lg font-extrabold tracking-tight">xAI API key</h3>
+            <p className="mt-1 text-sm text-zinc-500">
+              {xai.configured
+                ? `Active key ${xai.hint}${xai.source === 'environment' ? ' from the server environment' : ''}. Saving a new key replaces it for the whole studio.`
+                : 'Legacy optional key. Paste one from the xAI console if you still need it.'}
+            </p>
+          </div>
+          <KeyBadge ok={xai.configured} label={xai.configured ? 'Ready' : 'Optional'} />
         </div>
-      </form>
-      <form
-        className="space-y-4 rounded-3xl border border-white bg-white p-5 shadow-sm"
-        onSubmit={async (event) => {
-          event.preventDefault();
-          setKeyPending(true);
-          onError('');
-          try {
-            const response = await fetch('/api/admin/settings', {
-              method: 'PATCH',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ xaiApiKey: apiKey }),
-            });
-            if (!response.ok) throw new Error(await readError(response));
-            setApiKey('');
-            onNotice('xAI key saved. Mockups will use it now.');
-            await onChange();
-          } catch (reason) {
-            onError(reason instanceof Error ? reason.message : 'Could not save the API key.');
-          } finally {
-            setKeyPending(false);
-          }
-        }}
-      >
-        <div>
-          <h2 className="font-display text-lg font-extrabold">xAI API key</h2>
-          <p className="mt-1 text-sm text-zinc-500">
-            {xai.configured
-              ? `Active key ${xai.hint}${xai.source === 'environment' ? ' from the server environment' : ''}. Saving a new key replaces it for the whole studio.`
-              : 'No key yet. Paste one from the xAI console. Mockups will use it immediately.'}
-          </p>
-        </div>
-        <Field
-          label="API key"
-          value={apiKey}
-          onChange={setApiKey}
-          type="password"
-          required={false}
-          autoComplete="off"
-          placeholder="xai-..."
-        />
-        <div className="flex flex-wrap gap-2">
-          <button
-            type="submit"
-            disabled={keyPending || apiKey.trim().length < 12}
-            className="inline-flex h-10 items-center gap-2 rounded-2xl bg-emerald-600 px-4 text-sm font-semibold text-white disabled:opacity-70"
-          >
-            {keyPending && <Loader2 className="h-4 w-4 animate-spin" />}
-            Save API key
-          </button>
-          {xai.source === 'panel' && (
+        <form
+          className="space-y-3 px-5 py-4"
+          onSubmit={async (event) => {
+            event.preventDefault();
+            setKeyPending(true);
+            onError('');
+            try {
+              const response = await fetch('/api/admin/settings', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ xaiApiKey: apiKey }),
+              });
+              if (!response.ok) throw new Error(await readError(response));
+              setApiKey('');
+              onNotice('xAI key saved.');
+              await onChange();
+            } catch (reason) {
+              onError(reason instanceof Error ? reason.message : 'Could not save the API key.');
+            } finally {
+              setKeyPending(false);
+            }
+          }}
+        >
+          <Field
+            label="API key"
+            value={apiKey}
+            onChange={setApiKey}
+            type="password"
+            required={false}
+            autoComplete="off"
+            placeholder="xai-..."
+          />
+          <div className="flex flex-wrap gap-2 pt-1">
             <button
-              type="button"
-              disabled={keyPending}
-              onClick={async () => {
-                setKeyPending(true);
-                onError('');
-                try {
-                  const response = await fetch('/api/admin/settings', {
-                    method: 'PATCH',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ clearApiKey: true }),
-                  });
-                  if (!response.ok) throw new Error(await readError(response));
-                  onNotice('Saved API key removed.');
-                  await onChange();
-                } catch (reason) {
-                  onError(reason instanceof Error ? reason.message : 'Could not remove the API key.');
-                } finally {
-                  setKeyPending(false);
-                }
-              }}
-              className="inline-flex h-10 items-center rounded-2xl border border-zinc-200 px-4 text-sm font-semibold text-zinc-700 disabled:opacity-70"
+              type="submit"
+              disabled={keyPending || apiKey.trim().length < 12}
+              className="inline-flex h-10 items-center gap-2 rounded-xl bg-emerald-600 px-4 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-70"
             >
-              Remove saved key
+              {keyPending && <Loader2 className="h-4 w-4 animate-spin" />}
+              Save API key
             </button>
-          )}
-        </div>
-      </form>
-      <section className="space-y-3 rounded-3xl border border-white bg-white p-5 shadow-sm">
-        <label className="flex items-start justify-between gap-4 rounded-2xl border border-amber-200 bg-amber-50 px-3 py-3">
+            {xai.source === 'panel' && (
+              <button
+                type="button"
+                disabled={keyPending}
+                onClick={async () => {
+                  setKeyPending(true);
+                  onError('');
+                  try {
+                    const response = await fetch('/api/admin/settings', {
+                      method: 'PATCH',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ clearApiKey: true }),
+                    });
+                    if (!response.ok) throw new Error(await readError(response));
+                    onNotice('Saved API key removed.');
+                    await onChange();
+                  } catch (reason) {
+                    onError(
+                      reason instanceof Error ? reason.message : 'Could not remove the API key.',
+                    );
+                  } finally {
+                    setKeyPending(false);
+                  }
+                }}
+                className="inline-flex h-10 items-center rounded-xl border border-zinc-200 px-4 text-sm font-semibold text-zinc-700 hover:bg-zinc-50 disabled:opacity-70"
+              >
+                Remove saved key
+              </button>
+            )}
+          </div>
+        </form>
+      </Panel>
+
+      <Panel className="space-y-2 p-4 sm:p-5">
+        <div className="flex items-start justify-between gap-4 rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-3">
           <span>
             <span className="block text-sm font-semibold text-amber-950">Maintenance mode</span>
             <span className="block text-sm text-amber-800">
               Members see a maintenance screen instead of the studio. Admins keep full access.
             </span>
           </span>
-          <input
-            type="checkbox"
+          <Toggle
+            label="Maintenance mode"
             checked={draft.maintenanceMode}
-            onChange={(event) => void saveFlag({ maintenanceMode: event.target.checked })}
-            className="mt-1"
+            onChange={(next) => void saveFlag({ maintenanceMode: next })}
           />
-        </label>
+        </div>
         {pages.map((page) => (
-          <label key={page.key} className="flex items-start justify-between gap-4 rounded-2xl border border-zinc-100 px-3 py-3">
+          <div
+            key={page.key}
+            className="flex items-start justify-between gap-4 rounded-xl border border-zinc-100 px-3.5 py-3"
+          >
             <span>
-              <span className="block text-sm font-semibold">{page.label}</span>
+              <span className="block text-sm font-semibold text-zinc-900">{page.label}</span>
               <span className="block text-sm text-zinc-500">{page.note}</span>
             </span>
-            <input
-              type="checkbox"
+            <Toggle
+              label={page.label}
               checked={draft[page.key]}
-              onChange={(event) => void saveFlag({ [page.key]: event.target.checked })}
-              className="mt-1"
+              onChange={(next) => void saveFlag({ [page.key]: next })}
             />
-          </label>
+          </div>
         ))}
-        <label className="flex items-start justify-between gap-4 rounded-2xl border border-zinc-100 px-3 py-3">
+        <div className="flex items-start justify-between gap-4 rounded-xl border border-zinc-100 px-3.5 py-3">
           <span>
-            <span className="block text-sm font-semibold">Registration</span>
-            <span className="block text-sm text-zinc-500">People can create a member account from the sign-in page.</span>
+            <span className="block text-sm font-semibold text-zinc-900">Registration</span>
+            <span className="block text-sm text-zinc-500">
+              People can create a member account from the sign-in page.
+            </span>
           </span>
-          <input
-            type="checkbox"
+          <Toggle
+            label="Registration"
             checked={draft.registrationEnabled}
-            onChange={(event) => void saveFlag({ registrationEnabled: event.target.checked })}
-            className="mt-1"
+            onChange={(next) => void saveFlag({ registrationEnabled: next })}
           />
-        </label>
-      </section>
-      <form onSubmit={onSubmit} className="space-y-4 rounded-3xl border border-white bg-white p-5 shadow-sm">
-        <Field label="Studio name" value={draft.studioName} onChange={(studioName) => setDraft({ ...draft, studioName })} />
-        <p className="flex items-start gap-2 text-xs leading-5 text-zinc-500">
-          <KeyRound className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-          The username and password in the server environment always sign in as admin, even after a password change here.
-        </p>
-        <button
-          type="submit"
-          disabled={pending}
-          className="inline-flex h-10 items-center gap-2 rounded-2xl bg-emerald-600 px-4 text-sm font-semibold text-white disabled:opacity-70"
+        </div>
+      </Panel>
+
+      <Panel className="space-y-4 p-5">
+        <form onSubmit={onSubmit} className="space-y-4">
+          <Field
+            label="Studio name"
+            value={draft.studioName}
+            onChange={(studioName) => setDraft({ ...draft, studioName })}
+          />
+          <p className="flex items-start gap-2 text-xs leading-5 text-zinc-500">
+            <KeyRound className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+            The username and password in the server environment always sign in as admin, even after a
+            password change here.
+          </p>
+          <button
+            type="submit"
+            disabled={pending}
+            className="inline-flex h-10 items-center gap-2 rounded-xl bg-zinc-900 px-4 text-sm font-semibold text-white hover:bg-zinc-800 disabled:opacity-70"
+          >
+            {pending && <Loader2 className="h-4 w-4 animate-spin" />}
+            Save settings
+          </button>
+        </form>
+      </Panel>
+
+      <Panel className="space-y-4 p-5">
+        <div>
+          <h3 className="font-display text-lg font-extrabold tracking-tight">Manual payment method</h3>
+          <p className="mt-1 text-sm text-zinc-500">
+            These details appear on the pricing page. Admin approval adds the selected credits to the user.
+          </p>
+        </div>
+        <form
+          className="space-y-3"
+          onSubmit={async (event) => {
+            event.preventDefault();
+            setPaymentPending(true);
+            onError('');
+            try {
+              const response = await fetch('/api/admin/settings', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(paymentDraft),
+              });
+              if (!response.ok) throw new Error(await readError(response));
+              onNotice('Payment method saved.');
+              await onChange();
+            } catch (reason) {
+              onError(reason instanceof Error ? reason.message : 'Could not save payment details.');
+            } finally {
+              setPaymentPending(false);
+            }
+          }}
         >
-          {pending && <Loader2 className="h-4 w-4 animate-spin" />}
-          Save settings
-        </button>
-      </form>
+          <Field label="Payment method name" value={paymentDraft.paymentMethodName} onChange={(value) => setPaymentDraft((current) => ({ ...current, paymentMethodName: value }))} placeholder="e.g. Mobile Wallet" />
+          <Field label="Receiver name" value={paymentDraft.paymentRecipientName} onChange={(value) => setPaymentDraft((current) => ({ ...current, paymentRecipientName: value }))} />
+          <Field label="Account / mobile number" value={paymentDraft.paymentAccountNumber} onChange={(value) => setPaymentDraft((current) => ({ ...current, paymentAccountNumber: value }))} />
+          <Field label="QR image URL (HTTPS, optional)" value={paymentDraft.paymentQrImageUrl} onChange={(value) => setPaymentDraft((current) => ({ ...current, paymentQrImageUrl: value }))} required={false} placeholder="https://…" />
+          <button type="submit" disabled={paymentPending} className="inline-flex h-10 items-center gap-2 rounded-xl bg-emerald-700 px-4 text-sm font-semibold text-white hover:bg-emerald-800 disabled:opacity-60">
+            {paymentPending && <Loader2 className="h-4 w-4 animate-spin" />}
+            Save payment method
+          </button>
+        </form>
+      </Panel>
     </div>
   );
 }

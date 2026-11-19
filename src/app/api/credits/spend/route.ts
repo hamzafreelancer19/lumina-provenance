@@ -14,12 +14,17 @@ export async function POST(request: Request) {
     return NextResponse.json({ unlimited: true });
   }
 
-  const { user, spent } = await spendWatermarkCredit(result.user.id);
+  const { user, spent, unlimited } = await spendWatermarkCredit(result.user.id);
   if (!spent) {
     return NextResponse.json(
       { error: `Not enough credits. You need ${WATERMARK_CREDIT_COST} credits per image.`, credits: user.credits },
       { status: 402 },
     );
+  }
+
+  if (unlimited) {
+    await logActivity(result.user.username, 'watermark', 'Removed watermark · unlimited credits');
+    return NextResponse.json({ unlimited: true });
   }
 
   await logActivity(result.user.username, 'watermark', `Removed watermark · ${WATERMARK_CREDIT_COST} credits used`);

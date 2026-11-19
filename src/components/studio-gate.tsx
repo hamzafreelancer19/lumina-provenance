@@ -16,9 +16,13 @@ export type StudioTools = {
 type StudioState = {
   ready: boolean;
   role: Role | null;
+  username: string | null;
+  displayName: string | null;
+  createdAt: number | null;
   maintenance: boolean;
   tools: StudioTools;
   credits: number;
+  unlimitedCredits: boolean;
 };
 
 const defaultTools: StudioTools = {
@@ -31,9 +35,13 @@ const defaultTools: StudioTools = {
 const StudioContext = createContext<StudioState>({
   ready: false,
   role: null,
+  username: null,
+  displayName: null,
+  createdAt: null,
   maintenance: false,
   tools: defaultTools,
   credits: 0,
+  unlimitedCredits: false,
 });
 
 export function useStudio() {
@@ -57,9 +65,13 @@ export function StudioGate({ children }: { children: React.ReactNode }) {
   const [state, setState] = useState<StudioState>({
     ready: false,
     role: null,
+    username: null,
+    displayName: null,
+    createdAt: null,
     maintenance: false,
     tools: defaultTools,
     credits: 0,
+    unlimitedCredits: false,
   });
 
   useEffect(() => {
@@ -77,15 +89,23 @@ export function StudioGate({ children }: { children: React.ReactNode }) {
           if (again.ok) {
             const data = (await again.json()) as {
               role?: Role;
+              username?: string;
+              displayName?: string;
+              createdAt?: number;
               maintenance?: boolean;
               tools?: StudioTools;
               credits?: number;
+              unlimitedCredits?: boolean;
             };
             setState({
               ready: true,
               role: data.role === 'admin' || data.role === 'member' ? data.role : null,
+              username: typeof data.username === 'string' ? data.username : null,
+              displayName: typeof data.displayName === 'string' ? data.displayName : null,
+              createdAt: typeof data.createdAt === 'number' ? data.createdAt : null,
               maintenance: Boolean(data.maintenance),
               credits: typeof data.credits === 'number' ? data.credits : 0,
+              unlimitedCredits: data.unlimitedCredits === true,
               tools: {
                 watermark: data.tools?.watermark !== false,
                 mockups: data.tools?.mockups !== false,
@@ -108,16 +128,24 @@ export function StudioGate({ children }: { children: React.ReactNode }) {
         if (!response.ok) return;
         const data = (await response.json()) as {
           role?: Role;
+          username?: string;
+          displayName?: string;
+          createdAt?: number;
           maintenance?: boolean;
           tools?: StudioTools;
           credits?: number;
+          unlimitedCredits?: boolean;
         };
         if (cancel) return;
         setState({
           ready: true,
           role: data.role === 'admin' || data.role === 'member' ? data.role : null,
+          username: typeof data.username === 'string' ? data.username : null,
+          displayName: typeof data.displayName === 'string' ? data.displayName : null,
+          createdAt: typeof data.createdAt === 'number' ? data.createdAt : null,
           maintenance: Boolean(data.maintenance),
           credits: typeof data.credits === 'number' ? data.credits : 0,
+          unlimitedCredits: data.unlimitedCredits === true,
           tools: {
             watermark: data.tools?.watermark !== false,
             mockups: data.tools?.mockups !== false,
