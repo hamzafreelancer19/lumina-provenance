@@ -210,6 +210,7 @@ function getDatabase() {
       max: 1,
       connect_timeout: 10,
       idle_timeout: 20,
+      prepare: false,
       ssl: /localhost|127\.0\.0\.1/.test(url) ? false : 'require',
     });
   }
