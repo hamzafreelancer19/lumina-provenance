@@ -40,19 +40,13 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000) and sign in.
 
-## Persistent database on Vercel
-
-The app uses local JSON files for development. On Vercel, connect a Postgres database from the Vercel Marketplace (Neon is supported) to the project. Vercel injects a connection variable such as `POSTGRES_URL`; the app creates its tables automatically on first use and stores users, credits, plans, settings, referrals, activity, payment requests, QR images, and payment receipts in the database. No SQL setup or manual schema migration is required. If Vercel has no database connection configured, the app returns an explicit storage configuration error instead of silently using ephemeral `/tmp` files.
-
-For local development, set `POSTGRES_URL` in `.env.local` if you want to test the database; otherwise the app continues using local files.
-
 ## Credit payments
 
 The pricing page offers one-time packs from **$0.55** to **$2.00**. Admins can create and edit plans, then activate or deactivate them under **Admin → Plans**; users only see active plans, and submitted payment requests use the active plan's current credit and price values. To enable payments, open **Admin → Settings → Manual payment method**, and enter the payment method name, recipient name, account/mobile number, and an optional HTTPS URL for the QR image. Users submit a transaction ID or a PNG/JPEG/WebP receipt image; credits are added only after an admin approves the request under **Admin → Payments**.
 
-Payment requests, uploaded QR images, and receipt images use Postgres when connected. In local development without `POSTGRES_URL`, they use the app's local `data/` folder.
+Payment requests, uploaded QR images, and receipt images use the app's local `data/` storage (or `/tmp` when `VERCEL` is set). `/tmp` is ephemeral and not shared across serverless instances, so this file-backed review workflow is suitable for local development or a host with persistent shared storage; a production serverless deployment needs a persistent database and file store before accepting real payments.
 
-Referral links use a per-user code in `/register?ref=CODE`. When a new account is created through a valid link, both the new user and the inviter receive 300 bonus credits. Referral codes and rewards are stored in the same persistent database.
+Referral links use a per-user code in `/register?ref=CODE`. When a new account is created through a valid link, both the new user and the inviter receive 300 bonus credits. Referral codes and rewards are stored in the same file-backed store, so production serverless deployments need persistent shared storage for reliable referrals.
 
 Production:
 
