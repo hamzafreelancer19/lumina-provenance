@@ -22,6 +22,7 @@ interface MobileActionBarProps {
   downloadFolderName: string | null;
   downloadStatus: { kind: 'success' | 'error'; message: string } | null;
   savingDownload: boolean;
+  downloadDisabled?: boolean;
   onClean: () => void;
   onReset: () => void;
   onDownload: () => void;
@@ -35,6 +36,7 @@ export function MobileActionBar({
   downloadFolderName,
   downloadStatus,
   savingDownload,
+  downloadDisabled = false,
   onClean,
   onReset,
   onDownload,
@@ -163,7 +165,7 @@ export function MobileActionBar({
                       ? downloadStatus.message
                       : `Save to ${downloadFolderName}`
                   }
-                  disabled={savingDownload}
+                  disabled={savingDownload || downloadDisabled}
                   onClick={onDownload}
                   className="focus-ring inline-flex items-center justify-center gap-1.5 rounded-xl bg-emerald-600 px-4 py-2 text-xs font-bold text-white hover:bg-emerald-700 active:scale-95 disabled:opacity-60 transition shadow-sm"
                 >
@@ -172,17 +174,23 @@ export function MobileActionBar({
                   ) : (
                     <FolderOpen size={14} />
                   )}
-                  <span>{savingDownload ? 'Saving…' : 'Save'}</span>
+                  <span>{downloadDisabled ? 'Naming…' : savingDownload ? 'Saving…' : 'Save'}</span>
                 </button>
               ) : (
                 <a
                   data-testid="button-mobile-download"
                   href={cleaned.url}
                   download={cleaned.name}
-                  className="focus-ring inline-flex items-center justify-center gap-1.5 rounded-xl bg-emerald-600 px-4 py-2 text-xs font-bold text-white hover:bg-emerald-700 active:scale-95 transition shadow-sm"
+                  aria-disabled={downloadDisabled}
+                  onClick={(event) => {
+                    if (downloadDisabled) event.preventDefault();
+                  }}
+                  className={`focus-ring inline-flex items-center justify-center gap-1.5 rounded-xl bg-emerald-600 px-4 py-2 text-xs font-bold text-white active:scale-95 transition shadow-sm ${
+                    downloadDisabled ? 'cursor-not-allowed opacity-60' : 'hover:bg-emerald-700'
+                  }`}
                 >
                   <ArrowDownToLine size={14} />
-                  <span>Download</span>
+                  <span>{downloadDisabled ? 'Naming…' : 'Download'}</span>
                 </a>
               )}
 

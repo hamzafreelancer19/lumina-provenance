@@ -28,6 +28,7 @@ interface ImageStageProps {
   onDownload?: () => void;
   onClean?: () => void;
   isBusy?: boolean;
+  downloadDisabled?: boolean;
 }
 
 type ViewMode = 'slider' | 'source' | 'clean' | 'side';
@@ -39,6 +40,7 @@ export function ImageStage({
   onDownload,
   onClean,
   isBusy,
+  downloadDisabled = false,
 }: ImageStageProps) {
   const [sourceUrl, setSourceUrl] = useState('');
   const [viewMode, setViewMode] = useState<ViewMode>('clean');
@@ -194,21 +196,28 @@ export function ImageStage({
                     <button
                       type="button"
                       onClick={onDownload}
+                      disabled={downloadDisabled}
                       title={`Save to ${downloadFolderName}`}
-                      className="focus-ring inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-2.5 py-1 text-xs font-bold text-white hover:bg-emerald-700 transition shadow-2xs"
+                      className="focus-ring inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-2.5 py-1 text-xs font-bold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60 transition shadow-2xs"
                     >
                       <ArrowDownToLine size={13} />
-                      <span>Save</span>
+                      <span>{downloadDisabled ? 'Naming…' : 'Save'}</span>
                     </button>
                   ) : (
                     <a
                       href={cleaned.url}
                       download={cleaned.name}
+                      aria-disabled={downloadDisabled}
+                      onClick={(event) => {
+                        if (downloadDisabled) event.preventDefault();
+                      }}
                       title={`Download ${cleaned.name}`}
-                      className="focus-ring inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-2.5 py-1 text-xs font-bold text-white hover:bg-emerald-700 transition shadow-2xs"
+                      className={`focus-ring inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-2.5 py-1 text-xs font-bold text-white transition shadow-2xs ${
+                        downloadDisabled ? 'cursor-not-allowed opacity-60' : 'hover:bg-emerald-700'
+                      }`}
                     >
                       <ArrowDownToLine size={13} />
-                      <span>Download</span>
+                      <span>{downloadDisabled ? 'Naming…' : 'Download'}</span>
                     </a>
                   )}
 
@@ -436,19 +445,26 @@ export function ImageStage({
                     <button
                       type="button"
                       onClick={onDownload}
-                      className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-emerald-700 transition"
+                      disabled={downloadDisabled}
+                      className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60 transition"
                     >
                       <ArrowDownToLine size={14} />
-                      <span>Save to selected folder</span>
+                      <span>{downloadDisabled ? 'Naming…' : 'Save to selected folder'}</span>
                     </button>
                   ) : (
                     <a
                       href={cleaned.url}
                       download={cleaned.name}
-                      className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-emerald-700 transition"
+                      aria-disabled={downloadDisabled}
+                      onClick={(event) => {
+                        if (downloadDisabled) event.preventDefault();
+                      }}
+                      className={`inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white transition ${
+                        downloadDisabled ? 'cursor-not-allowed opacity-60' : 'hover:bg-emerald-700'
+                      }`}
                     >
                       <ArrowDownToLine size={14} />
-                      <span>Download Clean Copy</span>
+                      <span>{downloadDisabled ? 'Naming…' : 'Download Clean Copy'}</span>
                     </a>
                   ))}
                 <button

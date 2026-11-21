@@ -11,9 +11,11 @@ interface CleanResultCardProps {
   downloadFolderName: string | null;
   downloadStatus: { kind: 'success' | 'error'; message: string } | null;
   savingDownload: boolean;
+  downloadDisabled?: boolean;
   onDownload: () => void;
   onReset?: () => void;
   onRename?: (name: string) => void;
+  onRenameStatus?: (busy: boolean) => void;
 }
 
 function extensionOf(name: string) {
@@ -44,8 +46,10 @@ export function CleanResultCard({
   downloadFolderName,
   downloadStatus,
   savingDownload,
+  downloadDisabled = false,
   onDownload,
   onRename,
+  onRenameStatus,
 }: CleanResultCardProps) {
   const [copied, setCopied] = useState(false);
   const [autoBusy, setAutoBusy] = useState(false);
@@ -95,6 +99,7 @@ export function CleanResultCard({
 
   async function runAutoRename() {
     setAutoBusy(true);
+    onRenameStatus?.(true);
     setAutoError('');
     try {
       const image = await imageToRenameDataUrl(cleaned.blob);
@@ -113,6 +118,7 @@ export function CleanResultCard({
       setAutoError(reason instanceof Error ? reason.message : 'Auto rename failed.');
     } finally {
       setAutoBusy(false);
+      onRenameStatus?.(false);
     }
   }
 
@@ -166,22 +172,30 @@ export function CleanResultCard({
             <button
               data-testid="link-download-clean-image"
               type="button"
-              disabled={savingDownload}
+              disabled={savingDownload || downloadDisabled}
               onClick={onDownload}
               className="focus-ring inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-zinc-900 px-5 py-2.5 text-xs font-semibold text-white hover:bg-zinc-800 disabled:cursor-wait disabled:opacity-60 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-white transition shadow-sm hover:shadow"
             >
               <ArrowDownToLine size={15} />
-              <span>{savingDownload ? 'Saving…' : `Save to ${downloadFolderName}`}</span>
+              <span>{downloadDisabled ? 'Naming…' : savingDownload ? 'Saving…' : `Save to ${downloadFolderName}`}</span>
             </button>
           ) : (
             <a
               data-testid="link-download-clean-image"
               href={cleaned.url}
               download={cleaned.name}
-              className="focus-ring inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-zinc-900 px-5 py-2.5 text-xs font-semibold text-white hover:bg-zinc-800 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-white transition shadow-sm hover:shadow"
+              aria-disabled={downloadDisabled}
+              onClick={(event) => {
+                if (downloadDisabled) event.preventDefault();
+              }}
+              className={`focus-ring inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-zinc-900 px-5 py-2.5 text-xs font-semibold text-white dark:bg-zinc-100 dark:text-zinc-900 transition shadow-sm ${
+                downloadDisabled
+                  ? 'cursor-not-allowed opacity-60'
+                  : 'hover:bg-zinc-800 dark:hover:bg-white hover:shadow'
+              }`}
             >
               <ArrowDownToLine size={15} />
-              <span>Download {cleaned.name}</span>
+              <span>{downloadDisabled ? 'Naming…' : `Download ${cleaned.name}`}</span>
             </a>
           )}
         </div>

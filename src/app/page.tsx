@@ -64,6 +64,7 @@ function StudioApp() {
   const [downloadFolder, setDownloadFolder] = useState<FileSystemDirectoryHandle | null>(null);
   const [downloadStatus, setDownloadStatus] = useState<DownloadStatus>(null);
   const [savingDownload, setSavingDownload] = useState(false);
+  const [renameInProgress, setRenameInProgress] = useState(false);
 
   const educationRef = useRef<HTMLDivElement>(null);
   const auditCounterRef = useRef<number>(0);
@@ -144,6 +145,7 @@ function StudioApp() {
     setFile(nextFile);
     setAudit(null);
     setCleaned(null);
+    setRenameInProgress(false);
     setError('');
     setWorkflow('auditing');
     setOpenGroup(null);
@@ -223,6 +225,7 @@ function StudioApp() {
       }
       cleanedUrlRef.current = raster.url;
       setCleaned(result);
+      setRenameInProgress(true);
       setWorkflow('cleaned');
       if (!creditUsage.unlimited && creditUsage.credits === 0) {
         setCreditsEmpty(true);
@@ -257,6 +260,7 @@ function StudioApp() {
     setWorkflow('idle');
     setError('');
     setOpenGroup(null);
+    setRenameInProgress(false);
   };
 
   const foundCount = useMemo(
@@ -295,16 +299,16 @@ function StudioApp() {
 
         <main className="mx-auto max-w-6xl px-4 sm:px-6 pt-10 pb-28 lg:pb-16">
           {/* Hero Header */}
-          <section className="text-center max-w-3xl mx-auto mb-10">
-            <div className="inline-flex items-center gap-2 rounded-full border border-emerald-500/20 bg-emerald-500/[0.08] px-3.5 py-1 text-[11px] font-mono font-medium text-emerald-700 dark:text-emerald-400 mb-5 tracking-wide shadow-2xs backdrop-blur-sm">
+          <section className="mx-auto mb-10 max-w-3xl text-center">
+            <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-emerald-500/20 bg-emerald-500/[0.08] px-3.5 py-1 text-[11px] font-mono font-medium tracking-wide text-emerald-700 shadow-2xs backdrop-blur-sm dark:text-emerald-400">
               <span className="relative flex h-2 w-2">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+                <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
               </span>
               <span>Etsy Mockups</span>
             </div>
 
-            <h1 className="font-display text-3xl sm:text-4xl md:text-5xl font-extrabold tracking-tight leading-[1.15]">
+            <h1 className="font-display text-3xl font-extrabold leading-[1.15] tracking-tight sm:text-4xl md:text-5xl">
               <span className="bg-gradient-to-r from-emerald-700 via-emerald-600 to-teal-500 bg-clip-text text-transparent dark:from-emerald-300 dark:via-emerald-400 dark:to-teal-300">
                 Etsy Mockups
               </span>
@@ -312,21 +316,20 @@ function StudioApp() {
               <span className="text-zinc-950 dark:text-zinc-50">AI Watermark Remover</span>
             </h1>
 
-            <p className="mt-4 text-xs sm:text-sm text-zinc-600 dark:text-zinc-400 leading-relaxed max-w-xl mx-auto">
+            <p className="mx-auto mt-4 max-w-xl text-xs leading-relaxed text-zinc-600 sm:text-sm dark:text-zinc-400">
               Remove AI watermarks and hidden metadata from Etsy mockups in your browser. Your files stay on this device and are never uploaded.
             </p>
 
-            {/* Quick Feature Badges */}
             <div className="mt-5 flex flex-wrap items-center justify-center gap-2 text-xs">
-              <span className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-200/90 bg-white/80 dark:border-zinc-800 dark:bg-zinc-900/80 px-2.5 py-1 text-zinc-700 dark:text-zinc-300 shadow-2xs">
+              <span className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-200/90 bg-white/80 px-2.5 py-1 text-zinc-700 shadow-2xs dark:border-zinc-800 dark:bg-zinc-900/80 dark:text-zinc-300">
                 <Zap size={13} className="text-amber-500" />
                 <span>Instant results</span>
               </span>
-              <span className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-200/90 bg-white/80 dark:border-zinc-800 dark:bg-zinc-900/80 px-2.5 py-1 text-zinc-700 dark:text-zinc-300 shadow-2xs">
+              <span className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-200/90 bg-white/80 px-2.5 py-1 text-zinc-700 shadow-2xs dark:border-zinc-800 dark:bg-zinc-900/80 dark:text-zinc-300">
                 <Lock size={13} className="text-emerald-500" />
                 <span>Private by design</span>
               </span>
-              <span className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-200/90 bg-white/80 dark:border-zinc-800 dark:bg-zinc-900/80 px-2.5 py-1 text-zinc-700 dark:text-zinc-300 shadow-2xs">
+              <span className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-200/90 bg-white/80 px-2.5 py-1 text-zinc-700 shadow-2xs dark:border-zinc-800 dark:bg-zinc-900/80 dark:text-zinc-300">
                 <Sparkles size={13} className="text-indigo-500" />
                 <span>Quality preserved</span>
               </span>
@@ -394,6 +397,7 @@ function StudioApp() {
                 onDownload={handleDownload}
                 onClean={handleClean}
                 isBusy={isBusy}
+                downloadDisabled={renameInProgress}
               />
             </div>
           </section>
@@ -630,11 +634,13 @@ function StudioApp() {
               downloadFolderName={downloadFolder?.name || null}
               downloadStatus={downloadStatus}
               savingDownload={savingDownload}
+              downloadDisabled={renameInProgress}
               onDownload={handleDownload}
               onReset={reset}
               onRename={(name) =>
                 setCleaned((current) => (current ? { ...current, name } : current))
               }
+              onRenameStatus={setRenameInProgress}
             />
           )}
 
@@ -661,6 +667,7 @@ function StudioApp() {
         downloadFolderName={downloadFolder?.name || null}
         downloadStatus={downloadStatus}
         savingDownload={savingDownload}
+        downloadDisabled={renameInProgress}
         onDownload={handleDownload}
         foundCount={foundCount}
         onClean={handleClean}
