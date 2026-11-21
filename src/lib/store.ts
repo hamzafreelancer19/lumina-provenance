@@ -104,6 +104,16 @@ export type PaymentRequest = {
   reviewedBy: string | null;
 };
 
+export type ContactReport = {
+  id: string;
+  name: string;
+  email: string;
+  subject: string;
+  message: string;
+  createdAt: number;
+  status: 'unread' | 'read';
+};
+
 export type ApiKeyStatus = {
   configured: boolean;
   source: 'panel' | 'environment' | 'none';
@@ -114,6 +124,7 @@ type Store = {
   users: StudioUser[];
   activity: Activity[];
   paymentRequests: PaymentRequest[];
+  contactReports: ContactReport[];
   plans: CreditPlan[];
   settings: Settings;
   revision: number;
@@ -265,6 +276,7 @@ function emptyStore(): Store {
     users: [],
     activity: [],
     paymentRequests: [],
+    contactReports: [],
     plans: DEFAULT_CREDIT_PLANS.map((plan) => ({ ...plan })),
     settings: defaultSettings(),
     revision: 0,
@@ -302,6 +314,12 @@ function normalize(value: Store): Store {
     users,
     activity: Array.isArray(value.activity) ? value.activity : [],
     paymentRequests: Array.isArray(value.paymentRequests) ? value.paymentRequests : [],
+    contactReports: Array.isArray(value.contactReports)
+      ? value.contactReports.map((report) => ({
+          ...report,
+          status: report.status === 'read' ? 'read' : 'unread',
+        }))
+      : [],
     plans: Array.isArray(value.plans)
       ? value.plans.map((plan) => ({
           ...plan,
@@ -333,6 +351,11 @@ function absorb(base: Store, extra: Store | null): Store {
     ) {
       paymentRequests.set(request.id, request);
     }
+  }
+  const contactReports = new Map<string, ContactReport>();
+  for (const report of [...(base.contactReports || []), ...(extra.contactReports || [])]) {
+    const current = contactReports.get(report.id);
+    if (!current || report.status === 'read') contactReports.set(report.id, report);
   }
   const settings = extraWins
     ? {
@@ -374,6 +397,7 @@ function absorb(base: Store, extra: Store | null): Store {
     settings,
     activity: base.activity.length >= extra.activity.length ? base.activity : extra.activity,
     paymentRequests: [...paymentRequests.values()].sort((a, b) => b.createdAt - a.createdAt),
+    contactReports: [...contactReports.values()].sort((a, b) => b.createdAt - a.createdAt),
     plans: [...plans.values()],
     revision: Math.max(base.revision || 0, extra.revision || 0),
     deletedUsers: [...deleted],
@@ -419,6 +443,7 @@ async function writeDirCookie(store: Store) {
     ...store,
     activity: [],
     paymentRequests: [],
+    contactReports: [],
     plans: store.plans.map((plan) => ({ ...plan })),
     settings: { ...store.settings },
   };
@@ -553,6 +578,7 @@ function updateStore<T>(mutator: (store: Store) => T): Promise<T> {
       users: store.users,
       settings: store.settings,
       paymentRequests: store.paymentRequests,
+      contactReports: store.contactReports,
       plans: store.plans,
       deletedUsers: store.deletedUsers,
     });
@@ -561,6 +587,7 @@ function updateStore<T>(mutator: (store: Store) => T): Promise<T> {
       users: store.users,
       settings: store.settings,
       paymentRequests: store.paymentRequests,
+      contactReports: store.contactReports,
       plans: store.plans,
       deletedUsers: store.deletedUsers,
     });
@@ -1333,6 +1360,32 @@ export function logActivity(username: string, action: string, detail: string) {
   }).catch(() => undefined);
 }
 
+export function createContactReport(input: { name: string; email: string; subject: string; message: string }) {
+  return updateStore((store) => {
+    const report: ContactReport = {
+      id: randomUUID(),
+      name: input.name.slice(0, 80),
+      email: input.email.slice(0, 160),
+      subject: input.subject.slice(0, 120),
+      message: input.message.slice(0, 5000),
+      createdAt: Date.now(),
+      status: 'unread',
+    };
+    store.contactReports.unshift(report);
+    if (store.contactReports.length > 200) store.contactReports.length = 200;
+    return report;
+  });
+}
+
+export function markContactReportRead(id: string) {
+  return updateStore((store) => {
+    const report = store.contactReports.find((item) => item.id === id);
+    if (!report) throw new Error('Contact report not found.');
+    report.status = 'read';
+    return report;
+  });
+}
+
 export function overview() {
   return updateStore((store) => {
     const dayAgo = Date.now() - 24 * 60 * 60 * 1000;
@@ -1344,6 +1397,7 @@ export function overview() {
       paymentConfig: paymentConfigWithDefaults(store.settings),
       plans: store.plans.map((plan) => ({ ...plan })).sort((a, b) => a.price - b.price),
       paymentRequests: store.paymentRequests.slice(0, 100),
+      contactReports: store.contactReports.slice(0, 200),
       settings: publicSettings(store.settings),
       stats: {
         users: store.users.length,

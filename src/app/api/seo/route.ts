@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
 import { authorizeTool } from '@/lib/access';
-import { cloudflareAiConfigured, visionChat } from '@/lib/cloudflare-ai';
-import { getGroqApiKeys } from '@/lib/groq';
+import { getGroqApiKeys, groqChat } from '@/lib/groq';
 import { logActivity } from '@/lib/store';
 
 export const maxDuration = 60;
@@ -234,7 +233,7 @@ async function fitTitle(listing: Listing, signal: AbortSignal) {
     .filter(([, count]) => count > 2)
     .map(([word]) => word);
 
-  const text = await visionChat(
+  const text = await groqChat(
     {
       temperature: 0,
       max_completion_tokens: 256,
@@ -281,11 +280,10 @@ export async function POST(request: Request) {
   }
 
   const hasGroq = (await getGroqApiKeys()).length > 0;
-  if (!hasGroq && !(await cloudflareAiConfigured())) {
+  if (!hasGroq) {
     return NextResponse.json(
       {
-        error:
-          'Add a free Groq API key (recommended) or Cloudflare Workers AI in Admin → Settings for listing SEO.',
+        error: 'Add a Groq API key in Admin → Settings to use listing SEO.',
       },
       { status: 500 },
     );
@@ -304,7 +302,7 @@ export async function POST(request: Request) {
   }
 
   try {
-    const text = await visionChat(
+    const text = await groqChat(
       {
         temperature: 0.4,
         max_completion_tokens: 2048,

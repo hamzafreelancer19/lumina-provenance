@@ -1,23 +1,32 @@
 'use client';
 
 import { FormEvent, useState } from 'react';
-import { Mail, Send } from 'lucide-react';
+import { CheckCircle2, Send } from 'lucide-react';
 
 export function ContactForm() {
   const [sent, setSent] = useState(false);
 
-  function submit(event: FormEvent<HTMLFormElement>) {
+  async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    setSent(false);
     const form = new FormData(event.currentTarget);
     const name = String(form.get('name') || '').trim();
     const email = String(form.get('email') || '').trim();
     const subject = String(form.get('subject') || 'Lumina inquiry').trim();
     const message = String(form.get('message') || '').trim();
-    const body = `Name: ${name}\nEmail: ${email}\n\n${message}`;
-    const supportEmail = process.env.NEXT_PUBLIC_SUPPORT_EMAIL || 'support@lumina.app';
-
-    setSent(true);
-    window.location.href = `mailto:${supportEmail}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+    try {
+      const response = await fetch('/api/contact', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, email, subject, message }),
+      });
+      const data = (await response.json().catch(() => null)) as { error?: string } | null;
+      if (!response.ok) throw new Error(data?.error || 'Could not send your message.');
+      event.currentTarget.reset();
+      setSent(true);
+    } catch (reason) {
+      alert(reason instanceof Error ? reason.message : 'Could not send your message.');
+    }
   }
 
   return (
@@ -69,8 +78,8 @@ export function ContactForm() {
       </label>
       <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
         <span className="inline-flex items-center gap-1.5 text-[11px] text-zinc-500">
-          <Mail size={12} />
-          Opens your email app
+          {sent ? <CheckCircle2 size={12} className="text-emerald-600" /> : null}
+          {sent ? 'Message sent successfully' : 'Your message is sent securely'}
         </span>
         <button
           type="submit"

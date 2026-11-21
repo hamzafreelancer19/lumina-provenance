@@ -11,6 +11,7 @@ import {
   Layers3,
   LayoutDashboard,
   Loader2,
+  Mail,
   ScrollText,
   Settings,
   Shield,
@@ -21,7 +22,7 @@ import {
 } from 'lucide-react';
 
 type Role = 'admin' | 'member';
-type Section = 'overview' | 'users' | 'plans' | 'payments' | 'activity' | 'settings';
+type Section = 'overview' | 'users' | 'plans' | 'payments' | 'contacts' | 'activity' | 'settings';
 type CreditPlan = {
   id: string;
   name: string;
@@ -115,6 +116,16 @@ type ApiKeyStatus = {
   hint: string;
 };
 
+type ContactReport = {
+  id: string;
+  name: string;
+  email: string;
+  subject: string;
+  message: string;
+  createdAt: number;
+  status: 'unread' | 'read';
+};
+
 type GroqApiKeySummary = {
   id: string;
   hint: string;
@@ -129,6 +140,7 @@ type Overview = {
   paymentConfig: PaymentConfig;
   plans: CreditPlan[];
   paymentRequests: PaymentRequest[];
+  contactReports: ContactReport[];
   stats: {
     users: number;
     active: number;
@@ -151,6 +163,7 @@ const nav: { id: Section; label: string; icon: typeof LayoutDashboard; hint: str
   { id: 'users', label: 'Users', icon: Users, hint: 'Access & tools' },
   { id: 'plans', label: 'Plans', icon: Layers3, hint: 'Credit packages' },
   { id: 'payments', label: 'Payments', icon: CreditCard, hint: 'Review purchases' },
+  { id: 'contacts', label: 'Contact', icon: Mail, hint: 'View messages' },
   { id: 'activity', label: 'Activity', icon: ScrollText, hint: 'Recent events' },
   { id: 'settings', label: 'Settings', icon: Settings, hint: 'Keys & pages' },
 ];
@@ -388,6 +401,13 @@ export function AdminPanel() {
           />
         ) : section === 'activity' ? (
           <ActivitySection activity={data.activity} />
+        ) : section === 'contacts' ? (
+          <ContactReportsSection
+            reports={data.contactReports}
+            onChange={refresh}
+            onNotice={setNotice}
+            onError={setError}
+          />
         ) : (
           <SettingsSection
             settings={data.settings}
@@ -462,6 +482,95 @@ function OverviewSection({ data }: { data: Overview }) {
       </div>
 
       <ActivitySection activity={data.activity.slice(0, 8)} compact />
+    </section>
+  );
+}
+
+function ContactReportsSection({
+  reports,
+  onChange,
+  onNotice,
+  onError,
+}: {
+  reports: ContactReport[];
+  onChange: () => Promise<void>;
+  onNotice: (value: string) => void;
+  onError: (value: string) => void;
+}) {
+  async function markRead(id: string) {
+    onError('');
+    try {
+      const response = await fetch('/api/admin/contact', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id }),
+      });
+      if (!response.ok) throw new Error(await readError(response));
+      onNotice('Message marked as read.');
+      await onChange();
+    } catch (reason) {
+      onError(reason instanceof Error ? reason.message : 'Could not update the message.');
+    }
+  }
+
+  return (
+    <section className="space-y-3">
+      <Panel className="p-4 sm:p-5">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <h3 className="font-display text-lg font-extrabold tracking-tight text-zinc-900">Contact messages</h3>
+            <p className="mt-1 text-xs text-zinc-500">Messages submitted from the Contact page.</p>
+          </div>
+          <span className="rounded-full border border-zinc-200 bg-zinc-50 px-2.5 py-1 text-[11px] font-bold text-zinc-500">
+            {reports.filter((report) => report.status === 'unread').length} unread
+          </span>
+        </div>
+      </Panel>
+
+      {reports.length === 0 ? (
+        <Panel className="px-5 py-12 text-center">
+          <Mail className="mx-auto h-6 w-6 text-zinc-300" />
+          <p className="mt-3 text-sm font-semibold text-zinc-700">No contact messages yet</p>
+        </Panel>
+      ) : (
+        reports.map((report) => (
+          <Panel key={report.id} className="p-4 sm:p-5">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h4 className="text-sm font-bold text-zinc-900">{report.name}</h4>
+                  {report.status === 'unread' ? (
+                    <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-emerald-700">
+                      Unread
+                    </span>
+                  ) : (
+                    <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-zinc-500">
+                      Read
+                    </span>
+                  )}
+                </div>
+                <a className="mt-1 block text-xs text-emerald-700 hover:underline" href={`mailto:${report.email}`}>
+                  {report.email}
+                </a>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] text-zinc-400">{when(report.createdAt)}</span>
+                {report.status === 'unread' && (
+                  <button
+                    type="button"
+                    onClick={() => markRead(report.id)}
+                    className="rounded-lg border border-zinc-200 px-2.5 py-1.5 text-[11px] font-semibold text-zinc-600 hover:border-zinc-300 hover:text-zinc-900"
+                  >
+                    Mark read
+                  </button>
+                )}
+              </div>
+            </div>
+            <p className="mt-4 text-xs font-bold text-zinc-800">{report.subject}</p>
+            <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-zinc-600">{report.message}</p>
+          </Panel>
+        ))
+      )}
     </section>
   );
 }
