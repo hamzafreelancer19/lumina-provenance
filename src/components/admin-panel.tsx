@@ -1420,8 +1420,8 @@ function SettingsSection({
             <h3 className="font-display text-lg font-extrabold tracking-tight">Groq API key</h3>
             <p className="mt-1 text-sm text-zinc-500">
               {groq.configured
-              ? `Active ${groq.hint}${groq.source === 'environment' ? ' from the server environment' : ''}. Used for auto-rename, SEO, Keywords, and mockup planning. Multiple keys: comma-separated.`
-              : 'No key yet. Paste from the Groq console. Auto-rename, SEO, Keywords, and mockup planning use it. Multiple keys: comma-separated.'}
+              ? `Active ${groq.hint}${groq.source === 'environment' ? ' from the server environment' : ''}. Add keys individually; they become active immediately and rotate automatically for auto-rename, SEO, Keywords, and mockup planning.`
+              : 'Add a key from the Groq console. It becomes active immediately; additional keys rotate automatically for auto-rename, SEO, Keywords, and mockup planning.'}
             </p>
           </div>
           <KeyBadge ok={groq.configured} label={groq.configured ? 'Ready' : 'Missing'} />
@@ -1436,11 +1436,11 @@ function SettingsSection({
               const response = await fetch('/api/admin/settings', {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ groqApiKey: groqKey }),
+                body: JSON.stringify({ addGroqApiKey: groqKey }),
               });
               if (!response.ok) throw new Error(await readError(response));
               setGroqKey('');
-              onNotice('Groq key saved. Auto-rename, SEO, Keywords, and mockup planning will use it now.');
+              onNotice('Groq key added and active. Requests will rotate across the configured keys.');
               await onChange();
             } catch (reason) {
               onError(reason instanceof Error ? reason.message : 'Could not save the Groq API key.');
@@ -1450,13 +1450,13 @@ function SettingsSection({
           }}
         >
           <Field
-            label="Groq API key(s)"
+            label="New Groq API key"
             value={groqKey}
             onChange={setGroqKey}
             type="password"
             required={false}
             autoComplete="off"
-            placeholder="gsk_... or gsk_key1,gsk_key2"
+            placeholder="gsk_..."
           />
           <div className="flex flex-wrap gap-2 pt-1">
             <button
@@ -1465,7 +1465,7 @@ function SettingsSection({
               className="inline-flex h-10 items-center gap-2 rounded-xl bg-emerald-600 px-4 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-70"
             >
               {groqPending && <Loader2 className="h-4 w-4 animate-spin" />}
-              Save Groq key
+              Add Groq key
             </button>
             {groq.source === 'panel' && (
               <button

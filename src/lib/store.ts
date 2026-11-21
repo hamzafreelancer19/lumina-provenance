@@ -1201,6 +1201,37 @@ export function saveGroqApiKey(value: string) {
   });
 }
 
+export function addGroqApiKey(value: string) {
+  const key = value.trim();
+  if (
+    key.length < 12 ||
+    key.length > 400 ||
+    /[\s,;|]/.test(key)
+  ) {
+    throw new Error('Paste one valid Groq API key.');
+  }
+
+  return updateStore((store) => {
+    const storedKeys = parseApiKeys(store.settings.groqApiKey || '');
+    const environmentKeys = storedKeys.length
+      ? []
+      : parseApiKeys(
+          [process.env.GROQ_API_KEY, process.env.GROQ_API_KEYS].filter(Boolean).join(','),
+        );
+    const currentKeys = storedKeys.length ? storedKeys : environmentKeys;
+    if (currentKeys.includes(key)) {
+      throw new Error('That Groq API key is already added.');
+    }
+
+    const nextKeys = [...currentKeys, key];
+    if (nextKeys.join(',').length > 4000) {
+      throw new Error('The Groq API key list is too long.');
+    }
+    store.settings.groqApiKey = nextKeys.join(',');
+    return groqApiKeyStatus(store.settings);
+  });
+}
+
 export function clearGroqApiKey() {
   return updateStore((store) => {
     delete store.settings.groqApiKey;

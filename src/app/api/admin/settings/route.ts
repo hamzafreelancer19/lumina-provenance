@@ -4,6 +4,7 @@ import {
   clearApiKey,
   clearCloudflareAi,
   clearGroqApiKey,
+  addGroqApiKey,
   getPaymentConfig,
   logActivity,
   saveApiKey,
@@ -30,6 +31,7 @@ export async function PATCH(request: Request) {
     xaiApiKey?: unknown;
     clearApiKey?: unknown;
     groqApiKey?: unknown;
+    addGroqApiKey?: unknown;
     clearGroqApiKey?: unknown;
     cloudflareAccountId?: unknown;
     cloudflareApiToken?: unknown;
@@ -83,6 +85,12 @@ export async function PATCH(request: Request) {
     if (typeof body.groqApiKey === 'string') {
       const groq = await saveGroqApiKey(body.groqApiKey);
       await logActivity(result.user.username, 'settings.update', 'Saved the Groq API key');
+      return NextResponse.json({ groq });
+    }
+
+    if (typeof body.addGroqApiKey === 'string') {
+      const groq = await addGroqApiKey(body.addGroqApiKey);
+      await logActivity(result.user.username, 'settings.update', 'Added a Groq API key');
       return NextResponse.json({ groq });
     }
 
