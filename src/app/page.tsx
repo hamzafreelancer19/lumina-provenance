@@ -390,6 +390,8 @@ function StudioApp() {
               <ImageStage
                 file={file}
                 cleaned={cleaned}
+                downloadFolderName={downloadFolder?.name || null}
+                onDownload={handleDownload}
                 onClean={handleClean}
                 isBusy={isBusy}
               />

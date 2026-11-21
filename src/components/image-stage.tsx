@@ -24,6 +24,8 @@ import type { CleanResult } from '@/lib/types';
 interface ImageStageProps {
   file: File | null;
   cleaned: CleanResult | null;
+  downloadFolderName?: string | null;
+  onDownload?: () => void;
   onClean?: () => void;
   isBusy?: boolean;
 }
@@ -33,6 +35,8 @@ type ViewMode = 'slider' | 'source' | 'clean' | 'side';
 export function ImageStage({
   file,
   cleaned,
+  downloadFolderName,
+  onDownload,
   onClean,
   isBusy,
 }: ImageStageProps) {
@@ -186,15 +190,27 @@ export function ImageStage({
                   </div>
 
                   {/* Immediate Download & Copy Button on Stage */}
-                  <a
-                    href={cleaned.url}
-                    download={cleaned.name}
-                    title={`Download ${cleaned.name}`}
-                    className="focus-ring inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-2.5 py-1 text-xs font-bold text-white hover:bg-emerald-700 transition shadow-2xs"
-                  >
-                    <ArrowDownToLine size={13} />
-                    <span>Download</span>
-                  </a>
+                  {downloadFolderName && onDownload ? (
+                    <button
+                      type="button"
+                      onClick={onDownload}
+                      title={`Save to ${downloadFolderName}`}
+                      className="focus-ring inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-2.5 py-1 text-xs font-bold text-white hover:bg-emerald-700 transition shadow-2xs"
+                    >
+                      <ArrowDownToLine size={13} />
+                      <span>Save</span>
+                    </button>
+                  ) : (
+                    <a
+                      href={cleaned.url}
+                      download={cleaned.name}
+                      title={`Download ${cleaned.name}`}
+                      className="focus-ring inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-2.5 py-1 text-xs font-bold text-white hover:bg-emerald-700 transition shadow-2xs"
+                    >
+                      <ArrowDownToLine size={13} />
+                      <span>Download</span>
+                    </a>
+                  )}
 
                   <button
                     onClick={copyImage}
@@ -415,16 +431,26 @@ export function ImageStage({
                 )}
               </div>
               <div className="flex items-center gap-2">
-                {cleaned && (
-                  <a
-                    href={cleaned.url}
-                    download={cleaned.name}
-                    className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-emerald-700 transition"
-                  >
-                    <ArrowDownToLine size={14} />
-                    <span>Download Clean Copy</span>
-                  </a>
-                )}
+                {cleaned &&
+                  (downloadFolderName && onDownload ? (
+                    <button
+                      type="button"
+                      onClick={onDownload}
+                      className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-emerald-700 transition"
+                    >
+                      <ArrowDownToLine size={14} />
+                      <span>Save to selected folder</span>
+                    </button>
+                  ) : (
+                    <a
+                      href={cleaned.url}
+                      download={cleaned.name}
+                      className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-emerald-700 transition"
+                    >
+                      <ArrowDownToLine size={14} />
+                      <span>Download Clean Copy</span>
+                    </a>
+                  ))}
                 <button
                   onClick={() => setIsFullscreen(false)}
                   className="rounded-lg p-1.5 text-zinc-400 hover:text-white hover:bg-zinc-800 transition"
