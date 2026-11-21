@@ -12,7 +12,12 @@ const PUBLIC_FILES = new Set([
   '/twitter-image',
 ]);
 
-const OPEN_API = new Set(['/api/auth/login', '/api/auth/register', '/api/studio/status']);
+const OPEN_API = new Set([
+  '/api/auth/login',
+  '/api/auth/register',
+  '/api/studio/status',
+  '/api/contact',
+]);
 
 export async function middleware(request: NextRequest) {
   const { pathname, search } = request.nextUrl;
@@ -37,6 +42,15 @@ export async function middleware(request: NextRequest) {
     if (session && (pathname === '/login' || pathname === '/register')) {
       return NextResponse.redirect(new URL(session.role === 'admin' ? '/admin' : '/', request.url));
     }
+    return NextResponse.next();
+  }
+
+  const isPublicPage =
+    pathname === '/about' ||
+    pathname === '/contact' ||
+    pathname === '/blog' ||
+    pathname.startsWith('/blog/');
+  if (isPublicPage) {
     return NextResponse.next();
   }
 

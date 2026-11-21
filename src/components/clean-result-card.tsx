@@ -64,6 +64,10 @@ export function CleanResultCard({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cleaned.url]);
 
+  useEffect(() => {
+    return () => onRenameStatus?.(false);
+  }, [onRenameStatus]);
+
   const copyToClipboard = async () => {
     try {
       let imageBlob = cleaned.blob;
@@ -101,12 +105,15 @@ export function CleanResultCard({
     setAutoBusy(true);
     onRenameStatus?.(true);
     setAutoError('');
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 15000);
     try {
       const image = await imageToRenameDataUrl(cleaned.blob);
       const response = await fetch('/api/rename', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ image }),
+        signal: controller.signal,
       });
       const payload = (await response.json()) as { name?: string; error?: string };
       if (!response.ok || !payload.name) {
@@ -115,8 +122,15 @@ export function CleanResultCard({
       }
       onRename?.(sanitizeDownloadName(payload.name, cleaned.name));
     } catch (reason) {
-      setAutoError(reason instanceof Error ? reason.message : 'Auto rename failed.');
+      setAutoError(
+        reason instanceof DOMException && reason.name === 'AbortError'
+          ? 'Rename timed out. Download is available with the original name.'
+          : reason instanceof Error
+            ? reason.message
+            : 'Auto rename failed.',
+      );
     } finally {
+      window.clearTimeout(timeout);
       setAutoBusy(false);
       onRenameStatus?.(false);
     }

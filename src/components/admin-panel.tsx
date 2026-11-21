@@ -140,7 +140,7 @@ type Overview = {
   paymentConfig: PaymentConfig;
   plans: CreditPlan[];
   paymentRequests: PaymentRequest[];
-  contactReports: ContactReport[];
+  contactReports?: ContactReport[];
   stats: {
     users: number;
     active: number;
@@ -402,7 +402,7 @@ export function AdminPanel() {
           <ActivitySection activity={data.activity} />
         ) : section === 'contacts' ? (
           <ContactReportsSection
-            reports={data.contactReports}
+            reports={data.contactReports || []}
             onChange={refresh}
             onNotice={setNotice}
             onError={setError}
@@ -552,6 +552,16 @@ function ContactReportsSection({
               </div>
               <div className="flex items-center gap-2">
                 <span className="text-[11px] text-zinc-400">{when(report.createdAt)}</span>
+                <div className="flex items-center gap-2">
+                  <a
+                    href={`mailto:${report.email}?subject=${encodeURIComponent(`Re: ${report.subject}`)}&body=${encodeURIComponent(`Hi ${report.name},\n\n`)}`}
+                    onClick={() => {
+                      if (report.status === 'unread') void markRead(report.id);
+                    }}
+                    className="inline-flex rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1.5 text-[11px] font-semibold text-emerald-700 hover:bg-emerald-100"
+                  >
+                    Reply
+                  </a>
                 {report.status === 'unread' && (
                   <button
                     type="button"
@@ -561,6 +571,7 @@ function ContactReportsSection({
                     Mark read
                   </button>
                 )}
+                </div>
               </div>
             </div>
             <p className="mt-4 text-xs font-bold text-zinc-800">{report.subject}</p>
