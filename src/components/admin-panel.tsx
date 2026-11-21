@@ -115,6 +115,12 @@ type ApiKeyStatus = {
   hint: string;
 };
 
+type GroqApiKeySummary = {
+  id: string;
+  hint: string;
+  source: 'panel' | 'environment';
+};
+
 type Overview = {
   me: { id: string; username: string };
   users: PublicUser[];
@@ -136,6 +142,7 @@ type Overview = {
   };
   xai: ApiKeyStatus;
   groq: ApiKeyStatus;
+  groqKeys: GroqApiKeySummary[];
   cloudflare: ApiKeyStatus;
 };
 
@@ -387,6 +394,7 @@ export function AdminPanel() {
             paymentConfig={data.paymentConfig}
             xai={data.xai}
             groq={data.groq}
+            groqKeys={data.groqKeys}
             cloudflare={data.cloudflare}
             onChange={refresh}
             onNotice={setNotice}
@@ -1209,6 +1217,7 @@ function SettingsSection({
   paymentConfig,
   xai,
   groq,
+  groqKeys,
   cloudflare,
   onChange,
   onNotice,
@@ -1218,6 +1227,7 @@ function SettingsSection({
   paymentConfig: PaymentConfig;
   xai: ApiKeyStatus;
   groq: ApiKeyStatus;
+  groqKeys: GroqApiKeySummary[];
   cloudflare: ApiKeyStatus;
   onChange: () => Promise<void>;
   onNotice: (value: string) => void;
@@ -1301,6 +1311,25 @@ function SettingsSection({
       await onChange();
     } finally {
       setPending(false);
+    }
+  }
+
+  async function removeGroqKey(id: string) {
+    setGroqPending(true);
+    onError('');
+    try {
+      const response = await fetch('/api/admin/settings', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ removeGroqApiKey: id }),
+      });
+      if (!response.ok) throw new Error(await readError(response));
+      onNotice('Groq key removed.');
+      await onChange();
+    } catch (reason) {
+      onError(reason instanceof Error ? reason.message : 'Could not remove the Groq key.');
+    } finally {
+      setGroqPending(false);
     }
   }
 
@@ -1493,11 +1522,60 @@ function SettingsSection({
                 }}
                 className="inline-flex h-10 items-center rounded-xl border border-zinc-200 px-4 text-sm font-semibold text-zinc-700 hover:bg-zinc-50 disabled:opacity-70"
               >
-                Remove saved key
+                Remove all saved keys
               </button>
             )}
           </div>
         </form>
+        <div className="space-y-2 border-t border-zinc-100 px-5 py-4">
+          <div className="flex items-center justify-between gap-3">
+            <h4 className="text-sm font-semibold text-zinc-800">Configured keys</h4>
+            <span className="rounded-full bg-zinc-100 px-2.5 py-1 text-xs font-semibold text-zinc-600">
+              {groqKeys.length} {groqKeys.length === 1 ? 'key' : 'keys'}
+            </span>
+          </div>
+          {groqKeys.length ? (
+            groqKeys.map((key, index) => (
+              <div
+                key={key.id}
+                className="flex items-center justify-between gap-3 rounded-xl border border-zinc-200 px-3 py-2.5"
+              >
+                <div className="flex min-w-0 items-center gap-2.5">
+                  <KeyRound className="h-4 w-4 shrink-0 text-zinc-400" />
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium text-zinc-800">
+                      Groq key {index + 1}{' '}
+                      <span className="font-mono text-zinc-500">{key.hint}</span>
+                    </p>
+                    <p className="text-xs text-zinc-500">
+                      {key.source === 'panel' ? 'Saved in admin panel' : 'Server environment'}
+                    </p>
+                  </div>
+                </div>
+                {key.source === 'panel' ? (
+                  <button
+                    type="button"
+                    disabled={groqPending}
+                    onClick={() => void removeGroqKey(key.id)}
+                    aria-label={`Remove Groq key ${index + 1}`}
+                    className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg border border-zinc-200 px-3 text-xs font-semibold text-zinc-700 hover:bg-zinc-50 disabled:opacity-60"
+                  >
+                    <XCircle className="h-3.5 w-3.5" />
+                    Remove
+                  </button>
+                ) : (
+                  <span className="shrink-0 text-xs text-zinc-500">
+                    Manage in deployment settings
+                  </span>
+                )}
+              </div>
+            ))
+          ) : (
+            <p className="rounded-xl border border-dashed border-zinc-200 px-3 py-4 text-sm text-zinc-500">
+              No Groq API keys configured.
+            </p>
+          )}
+        </div>
       </Panel>
 
       <Panel className="overflow-hidden">

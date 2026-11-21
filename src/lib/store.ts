@@ -990,6 +990,21 @@ function groqApiKeyStatus(settings: Settings): ApiKeyStatus {
   };
 }
 
+function groqApiKeySummaries(settings: Settings) {
+  const storedKeys = parseApiKeys(settings.groqApiKey || '');
+  const keys = storedKeys.length
+    ? storedKeys
+    : parseApiKeys(
+        [process.env.GROQ_API_KEY, process.env.GROQ_API_KEYS].filter(Boolean).join(','),
+      );
+  const source = storedKeys.length ? 'panel' : 'environment';
+  return keys.map((key) => ({
+    id: createHash('sha256').update(key).digest('hex').slice(0, 16),
+    hint: `••••${key.slice(-4)}`,
+    source,
+  }));
+}
+
 function cloudflareAiStatus(settings: Settings): ApiKeyStatus {
   const storedAccount = settings.cloudflareAccountId?.trim() || '';
   const storedToken = settings.cloudflareApiToken?.trim() || '';
@@ -1232,6 +1247,32 @@ export function addGroqApiKey(value: string) {
   });
 }
 
+export function removeGroqApiKey(id: string) {
+  if (!/^[a-f0-9]{16}$/.test(id)) {
+    throw new Error('Select a valid Groq API key.');
+  }
+  return updateStore((store) => {
+    const keys = parseApiKeys(store.settings.groqApiKey || '');
+    if (!keys.length) {
+      throw new Error('Environment keys cannot be removed here.');
+    }
+
+    const remaining = keys.filter(
+      (key) => createHash('sha256').update(key).digest('hex').slice(0, 16) !== id,
+    );
+    if (remaining.length === keys.length) {
+      throw new Error('That Groq API key is no longer configured. Refresh and try again.');
+    }
+
+    if (remaining.length) {
+      store.settings.groqApiKey = remaining.join(',');
+    } else {
+      delete store.settings.groqApiKey;
+    }
+    return groqApiKeyStatus(store.settings);
+  });
+}
+
 export function clearGroqApiKey() {
   return updateStore((store) => {
     delete store.settings.groqApiKey;
@@ -1317,6 +1358,7 @@ export function overview() {
       },
       xai: apiKeyStatus(store.settings),
       groq: groqApiKeyStatus(store.settings),
+      groqKeys: groqApiKeySummaries(store.settings),
       cloudflare: cloudflareAiStatus(store.settings),
     };
   });
