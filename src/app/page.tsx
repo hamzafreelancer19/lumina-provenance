@@ -38,7 +38,13 @@ import { FaqSection } from '@/components/faq-section';
 import { Footer } from '@/components/footer';
 import { MobileActionBar } from '@/components/mobile-action-bar';
 import { WATERMARK_CREDIT_COST } from '@/lib/credit-policy';
-import { pickDownloadFolder, saveImageToFolder, supportsDownloadFolder } from '@/lib/download-folder';
+import {
+  getRememberedDownloadFolder,
+  pickDownloadFolder,
+  rememberDownloadFolder,
+  saveImageToFolder,
+  supportsDownloadFolder,
+} from '@/lib/download-folder';
 import { useStudio } from '@/components/studio-gate';
 
 type DownloadStatus = { kind: 'success' | 'error'; message: string } | null;
@@ -69,6 +75,15 @@ function StudioApp() {
   useEffect(() => {
     preloadC2pa();
     setCanChooseDownloadFolder(supportsDownloadFolder());
+    if (supportsDownloadFolder()) {
+      getRememberedDownloadFolder()
+        .then((folder) => {
+          if (folder) setDownloadFolder(folder);
+        })
+        .catch(() => {
+          // A restored folder is optional; the user can select one again.
+        });
+    }
   }, []);
 
   const handleChooseDownloadFolder = async () => {
@@ -76,6 +91,11 @@ function StudioApp() {
     try {
       const folder = await pickDownloadFolder();
       setDownloadFolder(folder);
+      try {
+        await rememberDownloadFolder(folder);
+      } catch {
+        // The folder still works for this session if browser storage is unavailable.
+      }
     } catch (reason) {
       if (reason instanceof DOMException && reason.name === 'AbortError') return;
       setDownloadStatus({

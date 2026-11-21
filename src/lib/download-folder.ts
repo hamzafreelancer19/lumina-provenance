@@ -4,6 +4,65 @@ declare global {
       mode?: 'read' | 'readwrite';
     }) => Promise<FileSystemDirectoryHandle>;
   }
+
+  interface FileSystemDirectoryHandle {
+    queryPermission?: (options?: { mode?: 'read' | 'readwrite' }) => Promise<PermissionState>;
+    requestPermission?: (options?: { mode?: 'read' | 'readwrite' }) => Promise<PermissionState>;
+  }
+}
+
+const FOLDER_DATABASE = 'lumina-downloads';
+const FOLDER_STORE = 'folders';
+const FOLDER_KEY = 'selected-folder';
+
+function openFolderDatabase() {
+  return new Promise<IDBDatabase>((resolve, reject) => {
+    const request = indexedDB.open(FOLDER_DATABASE, 1);
+    request.onupgradeneeded = () => {
+      if (!request.result.objectStoreNames.contains(FOLDER_STORE)) {
+        request.result.createObjectStore(FOLDER_STORE);
+      }
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+export async function rememberDownloadFolder(folder: FileSystemDirectoryHandle) {
+  const database = await openFolderDatabase();
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const transaction = database.transaction(FOLDER_STORE, 'readwrite');
+      transaction.objectStore(FOLDER_STORE).put(folder, FOLDER_KEY);
+      transaction.oncomplete = () => resolve();
+      transaction.onerror = () => reject(transaction.error);
+    });
+  } finally {
+    database.close();
+  }
+}
+
+export async function getRememberedDownloadFolder() {
+  if (typeof indexedDB === 'undefined') return null;
+  const database = await openFolderDatabase();
+  try {
+    return await new Promise<FileSystemDirectoryHandle | null>((resolve, reject) => {
+      const request = database.transaction(FOLDER_STORE, 'readonly')
+        .objectStore(FOLDER_STORE)
+        .get(FOLDER_KEY);
+      request.onsuccess = () => {
+        const result = request.result as unknown;
+        resolve(
+          result && typeof result === 'object' && 'getFileHandle' in result
+            ? (result as FileSystemDirectoryHandle)
+            : null,
+        );
+      };
+      request.onerror = () => reject(request.error);
+    });
+  } finally {
+    database.close();
+  }
 }
 
 export function supportsDownloadFolder() {
@@ -42,6 +101,13 @@ export async function saveImageToFolder(
   blob: Blob,
   name: string,
 ) {
+  if (folder.requestPermission) {
+    const permission = await folder.requestPermission({ mode: 'readwrite' });
+    if (permission !== 'granted') {
+      throw new Error('Folder permission was not granted. Choose the folder again.');
+    }
+  }
+
   const fileName = await unusedFileName(folder, name);
   const file = await folder.getFileHandle(fileName, { create: true });
   const writable = await file.createWritable();
