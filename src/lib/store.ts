@@ -53,7 +53,6 @@ export type Settings = {
   keywordsEnabled: boolean;
   registrationEnabled: boolean;
   maintenanceMode: boolean;
-  xaiApiKey?: string;
   /** One or more Groq keys, comma-separated. */
   groqApiKey?: string;
   cloudflareAccountId?: string;
@@ -360,7 +359,6 @@ function absorb(base: Store, extra: Store | null): Store {
   const settings = extraWins
     ? {
         ...extra.settings,
-        xaiApiKey: extra.settings.xaiApiKey || base.settings.xaiApiKey,
         groqApiKey: extra.settings.groqApiKey || base.settings.groqApiKey,
         cloudflareAccountId:
           extra.settings.cloudflareAccountId || base.settings.cloudflareAccountId,
@@ -369,7 +367,6 @@ function absorb(base: Store, extra: Store | null): Store {
       }
     : {
         ...base.settings,
-        xaiApiKey: base.settings.xaiApiKey || extra.settings.xaiApiKey,
         groqApiKey: base.settings.groqApiKey || extra.settings.groqApiKey,
         cloudflareAccountId:
           base.settings.cloudflareAccountId || extra.settings.cloudflareAccountId,
@@ -447,7 +444,6 @@ async function writeDirCookie(store: Store) {
     plans: store.plans.map((plan) => ({ ...plan })),
     settings: { ...store.settings },
   };
-  delete copy.settings.xaiApiKey;
   delete copy.settings.groqApiKey;
   delete copy.settings.cloudflareApiToken;
   const payload = Buffer.from(JSON.stringify(copy)).toString('base64url');
@@ -990,17 +986,6 @@ function parseApiKeys(value: string) {
   ];
 }
 
-function apiKeyStatus(settings: Settings): ApiKeyStatus {
-  const stored = settings.xaiApiKey?.trim() || '';
-  const fromEnv = process.env.XAI_API_KEY?.trim() || '';
-  const active = stored || fromEnv;
-  return {
-    configured: Boolean(active),
-    source: stored ? 'panel' : fromEnv ? 'environment' : 'none',
-    hint: active.length >= 4 ? `••••${active.slice(-4)}` : '',
-  };
-}
-
 function groqApiKeyStatus(settings: Settings): ApiKeyStatus {
   const storedKeys = parseApiKeys(settings.groqApiKey || '');
   const envKeys = parseApiKeys(
@@ -1180,10 +1165,6 @@ export function savePaymentConfig(patch: PaymentConfig) {
   });
 }
 
-export function getApiKey() {
-  return updateStore((store) => (store.settings.xaiApiKey?.trim() || process.env.XAI_API_KEY?.trim() || ''));
-}
-
 export function getStoredGroqApiKeys() {
   return updateStore((store) => {
     const fromPanel = parseApiKeys(store.settings.groqApiKey || '');
@@ -1208,24 +1189,6 @@ export function saveSettings(patch: Partial<PublicSettings>) {
     if (typeof patch.registrationEnabled === 'boolean') store.settings.registrationEnabled = patch.registrationEnabled;
     if (typeof patch.maintenanceMode === 'boolean') store.settings.maintenanceMode = patch.maintenanceMode;
     return publicSettings(store.settings);
-  });
-}
-
-export function saveApiKey(value: string) {
-  const key = value.trim();
-  if (key.length < 12 || key.length > 400 || /\s/.test(key)) {
-    throw new Error('Paste a valid xAI API key.');
-  }
-  return updateStore((store) => {
-    store.settings.xaiApiKey = key;
-    return apiKeyStatus(store.settings);
-  });
-}
-
-export function clearApiKey() {
-  return updateStore((store) => {
-    delete store.settings.xaiApiKey;
-    return apiKeyStatus(store.settings);
   });
 }
 
@@ -1410,7 +1373,6 @@ export function overview() {
         seo: count('seo'),
         keywords: count('keywords'),
       },
-      xai: apiKeyStatus(store.settings),
       groq: groqApiKeyStatus(store.settings),
       groqKeys: groqApiKeySummaries(store.settings),
       cloudflare: cloudflareAiStatus(store.settings),

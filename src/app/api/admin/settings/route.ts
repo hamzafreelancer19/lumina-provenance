@@ -1,14 +1,12 @@
 import { NextResponse } from 'next/server';
 import { requireAdmin } from '@/lib/access';
 import {
-  clearApiKey,
   clearCloudflareAi,
   clearGroqApiKey,
   addGroqApiKey,
   removeGroqApiKey,
   getPaymentConfig,
   logActivity,
-  saveApiKey,
   saveCloudflareAi,
   saveGroqApiKey,
   savePaymentConfig,
@@ -29,8 +27,6 @@ export async function PATCH(request: Request) {
     keywordsEnabled?: unknown;
     registrationEnabled?: unknown;
     maintenanceMode?: unknown;
-    xaiApiKey?: unknown;
-    clearApiKey?: unknown;
     groqApiKey?: unknown;
     addGroqApiKey?: unknown;
     removeGroqApiKey?: unknown;
@@ -60,12 +56,6 @@ export async function PATCH(request: Request) {
   }
 
   try {
-    if (body.clearApiKey === true) {
-      const xai = await clearApiKey();
-      await logActivity(result.user.username, 'settings.update', 'Removed the xAI API key');
-      return NextResponse.json({ xai });
-    }
-
     if (body.clearGroqApiKey === true) {
       const groq = await clearGroqApiKey();
       await logActivity(result.user.username, 'settings.update', 'Removed the Groq API key');
@@ -82,12 +72,6 @@ export async function PATCH(request: Request) {
       const cloudflare = await clearCloudflareAi();
       await logActivity(result.user.username, 'settings.update', 'Removed Cloudflare Workers AI credentials');
       return NextResponse.json({ cloudflare });
-    }
-
-    if (typeof body.xaiApiKey === 'string') {
-      const xai = await saveApiKey(body.xaiApiKey);
-      await logActivity(result.user.username, 'settings.update', 'Saved the xAI API key');
-      return NextResponse.json({ xai });
     }
 
     if (typeof body.groqApiKey === 'string') {

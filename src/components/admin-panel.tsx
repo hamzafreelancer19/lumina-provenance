@@ -152,10 +152,9 @@ type Overview = {
     seo: number;
     keywords: number;
   };
-  xai: ApiKeyStatus;
-  groq: ApiKeyStatus;
+  groq?: ApiKeyStatus;
   groqKeys: GroqApiKeySummary[];
-  cloudflare: ApiKeyStatus;
+  cloudflare?: ApiKeyStatus;
 };
 
 const nav: { id: Section; label: string; icon: typeof LayoutDashboard; hint: string }[] = [
@@ -412,10 +411,9 @@ export function AdminPanel() {
           <SettingsSection
             settings={data.settings}
             paymentConfig={data.paymentConfig}
-            xai={data.xai}
-            groq={data.groq}
+            groq={data.groq || { configured: false, source: 'none', hint: 'Not configured' }}
             groqKeys={data.groqKeys}
-            cloudflare={data.cloudflare}
+            cloudflare={data.cloudflare || { configured: false, source: 'none', hint: 'Not configured' }}
             onChange={refresh}
             onNotice={setNotice}
             onError={setError}
@@ -446,9 +444,8 @@ function OverviewSection({ data }: { data: Overview }) {
     <section className="space-y-4">
       <Panel className="flex flex-wrap items-center gap-2 px-4 py-3.5">
         <span className="mr-1 text-xs font-semibold text-zinc-500">API status</span>
-        <KeyBadge ok={data.cloudflare.configured} label="Cloudflare" />
-        <KeyBadge ok={data.groq.configured} label="Groq" />
-        <KeyBadge ok={data.xai.configured} label="xAI" />
+        <KeyBadge ok={data.cloudflare?.configured === true} label="Cloudflare" />
+        <KeyBadge ok={data.groq?.configured === true} label="Groq" />
         {data.settings.maintenanceMode && (
           <span className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-900">
             Maintenance on
@@ -1324,7 +1321,6 @@ function PaymentRequestsSection({
 function SettingsSection({
   settings,
   paymentConfig,
-  xai,
   groq,
   groqKeys,
   cloudflare,
@@ -1334,7 +1330,6 @@ function SettingsSection({
 }: {
   settings: StudioSettings;
   paymentConfig: PaymentConfig;
-  xai: ApiKeyStatus;
   groq: ApiKeyStatus;
   groqKeys: GroqApiKeySummary[];
   cloudflare: ApiKeyStatus;
@@ -1343,12 +1338,10 @@ function SettingsSection({
   onError: (value: string) => void;
 }) {
   const [draft, setDraft] = useState(settings);
-  const [apiKey, setApiKey] = useState('');
   const [groqKey, setGroqKey] = useState('');
   const [cfAccountId, setCfAccountId] = useState('');
   const [cfApiToken, setCfApiToken] = useState('');
   const [pending, setPending] = useState(false);
-  const [keyPending, setKeyPending] = useState(false);
   const [groqPending, setGroqPending] = useState(false);
   const [cfPending, setCfPending] = useState(false);
   const [paymentDraft, setPaymentDraft] = useState(paymentConfig);
@@ -1685,92 +1678,6 @@ function SettingsSection({
             </p>
           )}
         </div>
-      </Panel>
-
-      <Panel className="overflow-hidden">
-        <div className="flex items-start justify-between gap-3 border-b border-zinc-100 px-5 py-4">
-          <div>
-            <h3 className="font-display text-lg font-extrabold tracking-tight">xAI API key</h3>
-            <p className="mt-1 text-sm text-zinc-500">
-              {xai.configured
-                ? `Active key ${xai.hint}${xai.source === 'environment' ? ' from the server environment' : ''}. Saving a new key replaces it for the whole studio.`
-                : 'Legacy optional key. Paste one from the xAI console if you still need it.'}
-            </p>
-          </div>
-          <KeyBadge ok={xai.configured} label={xai.configured ? 'Ready' : 'Optional'} />
-        </div>
-        <form
-          className="space-y-3 px-5 py-4"
-          onSubmit={async (event) => {
-            event.preventDefault();
-            setKeyPending(true);
-            onError('');
-            try {
-              const response = await fetch('/api/admin/settings', {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ xaiApiKey: apiKey }),
-              });
-              if (!response.ok) throw new Error(await readError(response));
-              setApiKey('');
-              onNotice('xAI key saved.');
-              await onChange();
-            } catch (reason) {
-              onError(reason instanceof Error ? reason.message : 'Could not save the API key.');
-            } finally {
-              setKeyPending(false);
-            }
-          }}
-        >
-          <Field
-            label="API key"
-            value={apiKey}
-            onChange={setApiKey}
-            type="password"
-            required={false}
-            autoComplete="off"
-            placeholder="xai-..."
-          />
-          <div className="flex flex-wrap gap-2 pt-1">
-            <button
-              type="submit"
-              disabled={keyPending || apiKey.trim().length < 12}
-              className="inline-flex h-10 items-center gap-2 rounded-xl bg-emerald-600 px-4 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-70"
-            >
-              {keyPending && <Loader2 className="h-4 w-4 animate-spin" />}
-              Save API key
-            </button>
-            {xai.source === 'panel' && (
-              <button
-                type="button"
-                disabled={keyPending}
-                onClick={async () => {
-                  setKeyPending(true);
-                  onError('');
-                  try {
-                    const response = await fetch('/api/admin/settings', {
-                      method: 'PATCH',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ clearApiKey: true }),
-                    });
-                    if (!response.ok) throw new Error(await readError(response));
-                    onNotice('Saved API key removed.');
-                    await onChange();
-                  } catch (reason) {
-                    onError(
-                      reason instanceof Error ? reason.message : 'Could not remove the API key.',
-                    );
-                  } finally {
-                    setKeyPending(false);
-                  }
-                }}
-                className="inline-flex h-10 items-center rounded-xl border border-zinc-200 px-4 text-sm font-semibold text-zinc-700 hover:bg-zinc-50 disabled:opacity-70"
-              >
-                Remove saved key
-              </button>
-            )}
-          </div>
-        </form>
       </Panel>
 
       <Panel className="space-y-2 p-4 sm:p-5">
