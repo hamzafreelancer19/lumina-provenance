@@ -1075,6 +1075,7 @@ function CreditPlansSection({
   const [paymentRecipientName, setPaymentRecipientName] = useState('');
   const [paymentAccountNumber, setPaymentAccountNumber] = useState('');
   const [paymentQrImageUrl, setPaymentQrImageUrl] = useState('');
+  const [paymentQrFile, setPaymentQrFile] = useState<File | null>(null);
   const [active, setActive] = useState(true);
   const [popular, setPopular] = useState(false);
   const [pending, setPending] = useState(false);
@@ -1089,6 +1090,7 @@ function CreditPlansSection({
     setPaymentRecipientName('');
     setPaymentAccountNumber('');
     setPaymentQrImageUrl('');
+    setPaymentQrFile(null);
     setActive(true);
     setPopular(false);
   }
@@ -1103,6 +1105,7 @@ function CreditPlansSection({
     setPaymentRecipientName(plan.paymentRecipientName || '');
     setPaymentAccountNumber(plan.paymentAccountNumber || '');
     setPaymentQrImageUrl(plan.paymentQrImageUrl || '');
+    setPaymentQrFile(null);
     setActive(plan.active);
     setPopular(plan.popular);
     onError('');
@@ -1126,12 +1129,27 @@ function CreditPlansSection({
           paymentMethodName,
           paymentRecipientName,
           paymentAccountNumber,
+          paymentQrImageUrl,
           active,
           popular,
         }),
       });
       if (!response.ok) throw new Error(await readError(response));
-      onNotice(editingId ? 'Credit plan updated.' : 'Credit plan created.');
+      const data = (await response.json()) as { plan: CreditPlan };
+      setEditingId(data.plan.id);
+      if (paymentQrFile) {
+        const form = new FormData();
+        form.set('qrImage', paymentQrFile);
+        form.set('planId', data.plan.id);
+        const qrResponse = await fetch('/api/admin/payment-qr', { method: 'POST', body: form });
+        if (!qrResponse.ok) {
+          throw new Error(`Plan saved, but QR upload failed: ${await readError(qrResponse)}`);
+        }
+        const qrData = (await qrResponse.json()) as { paymentQrImageUrl: string };
+        setPaymentQrImageUrl(qrData.paymentQrImageUrl);
+        setPaymentQrFile(null);
+      }
+      onNotice(paymentQrFile ? 'Credit plan and QR saved.' : editingId ? 'Credit plan updated.' : 'Credit plan created.');
       reset();
       await onChange();
     } catch (reason) {
@@ -1222,42 +1240,27 @@ function CreditPlansSection({
             <Field label="Method name" value={paymentMethodName} onChange={setPaymentMethodName} placeholder="e.g. JazzCash" />
             <Field label="Receiver name" value={paymentRecipientName} onChange={setPaymentRecipientName} placeholder="Account holder" />
             <Field label="Account / mobile number" value={paymentAccountNumber} onChange={setPaymentAccountNumber} placeholder="03xx xxxxxxx" />
-            {editingId ? (
-              <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm font-medium text-zinc-700 transition hover:border-emerald-400 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-200">
-                {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : <CreditCard className="h-4 w-4 text-emerald-700" />}
-                {pending ? 'Uploading QR…' : paymentQrImageUrl ? 'Replace plan QR' : 'Upload plan QR'}
-                <input
-                  type="file"
-                  accept="image/png,image/jpeg,image/webp"
-                  disabled={pending}
-                  className="sr-only"
-                  onChange={async (event) => {
-                    const file = event.target.files?.[0];
-                    event.target.value = '';
-                    if (!file || !editingId) return;
-                    setPending(true);
-                    onError('');
-                    try {
-                      const form = new FormData();
-                      form.set('qrImage', file);
-                      form.set('planId', editingId);
-                      const response = await fetch('/api/admin/payment-qr', { method: 'POST', body: form });
-                      if (!response.ok) throw new Error(await readError(response));
-                      const data = (await response.json()) as { paymentQrImageUrl: string };
-                      setPaymentQrImageUrl(data.paymentQrImageUrl);
-                      onNotice('Plan QR image uploaded.');
-                      await onChange();
-                    } catch (reason) {
-                      onError(reason instanceof Error ? reason.message : 'Could not upload the plan QR image.');
-                    } finally {
-                      setPending(false);
-                    }
-                  }}
-                />
-              </label>
-            ) : (
-              <p className="text-xs text-zinc-500">Save the plan first to upload its QR code.</p>
-            )}
+            <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm font-medium text-zinc-700 transition hover:border-emerald-400 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-200">
+              <CreditCard className="h-4 w-4 text-emerald-700" />
+              {paymentQrFile ? 'Choose a different QR' : paymentQrImageUrl ? 'Replace plan QR' : 'Upload plan QR'}
+              <input
+                type="file"
+                accept="image/png,image/jpeg,image/webp"
+                disabled={pending}
+                className="sr-only"
+                onChange={(event) => {
+                  setPaymentQrFile(event.target.files?.[0] || null);
+                  event.target.value = '';
+                }}
+              />
+            </label>
+            <p className="text-xs text-zinc-500">
+              {paymentQrFile
+                ? `${paymentQrFile.name} · QR uploads when you save the plan.`
+                : paymentQrImageUrl
+                  ? 'A QR is already saved for this plan.'
+                  : 'Optional · PNG, JPG, or WebP up to 3 MB. It will upload when you save the plan.'}
+            </p>
           </div>
           <div className="flex flex-wrap gap-4 rounded-xl border border-zinc-100 p-3">
             <label className="inline-flex items-center gap-2 text-sm text-zinc-700">
