@@ -3,7 +3,11 @@ import { existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileS
 import { cookies } from 'next/headers';
 import { dirname, join } from 'path';
 import type { SessionPayload } from '@/lib/auth';
-import { DAILY_CREDIT_ALLOWANCE, WATERMARK_CREDIT_COST } from '@/lib/credit-policy';
+import {
+  DAILY_CREDIT_ALLOWANCE,
+  DAILY_CREDIT_POLICY_VERSION,
+  WATERMARK_CREDIT_COST,
+} from '@/lib/credit-policy';
 import { DEFAULT_CREDIT_PLANS, REFERRAL_REWARD_CREDITS, type CreditPlan } from '@/lib/pricing';
 import { hashPassword, secretsMatch, verifyPassword } from '@/lib/password';
 import {
@@ -32,6 +36,7 @@ export type StudioUser = {
   tools: UserTools;
   dailyCreditsRemaining: number;
   dailyCreditsDate: string;
+  dailyCreditsPolicyVersion: number;
   bonusCredits: number;
   unlimitedCredits: boolean;
   updatedAt: number;
@@ -170,8 +175,13 @@ function refreshUserCredits(user: StudioUser, now = Date.now()) {
   if (!Number.isSafeInteger(user.dailyCreditsRemaining) || user.dailyCreditsRemaining < 0) {
     user.dailyCreditsRemaining = 0;
   }
-  if (typeof user.dailyCreditsDate !== 'string') {
+  if (
+    user.dailyCreditsPolicyVersion !== DAILY_CREDIT_POLICY_VERSION ||
+    user.dailyCreditsDate !== today
+  ) {
+    user.dailyCreditsRemaining = DAILY_CREDIT_ALLOWANCE;
     user.dailyCreditsDate = today;
+    user.dailyCreditsPolicyVersion = DAILY_CREDIT_POLICY_VERSION;
   }
 }
 
@@ -354,6 +364,10 @@ function normalize(value: Store): Store {
         : DAILY_CREDIT_ALLOWANCE,
       dailyCreditsDate:
         typeof user.dailyCreditsDate === 'string' ? user.dailyCreditsDate : utcDate(),
+      dailyCreditsPolicyVersion:
+        Number.isSafeInteger(user.dailyCreditsPolicyVersion) && user.dailyCreditsPolicyVersion >= 0
+          ? user.dailyCreditsPolicyVersion
+          : 0,
       bonusCredits: Number.isSafeInteger(user.bonusCredits)
         ? Math.max(0, user.bonusCredits)
         : 0,
@@ -576,6 +590,7 @@ function addEnvAdmin(store: Store, username: string, password: string, displayNa
     tools: defaultUserTools(),
     dailyCreditsRemaining: DAILY_CREDIT_ALLOWANCE,
     dailyCreditsDate: utcDate(),
+    dailyCreditsPolicyVersion: DAILY_CREDIT_POLICY_VERSION,
     bonusCredits: 0,
     unlimitedCredits: false,
     updatedAt: Date.now(),
@@ -749,6 +764,7 @@ export function createStudioUser(input: {
       tools,
       dailyCreditsRemaining: DAILY_CREDIT_ALLOWANCE,
       dailyCreditsDate: utcDate(now),
+      dailyCreditsPolicyVersion: DAILY_CREDIT_POLICY_VERSION,
       bonusCredits: referrer ? REFERRAL_REWARD_CREDITS : 0,
       unlimitedCredits: false,
       updatedAt: now,

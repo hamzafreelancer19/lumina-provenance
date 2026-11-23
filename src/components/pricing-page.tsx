@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
-import { ArrowLeft, ArrowRight, Check, Clock3, CreditCard, ImageUp, Loader2, QrCode, Sparkles } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Check, Clock3, Copy, CreditCard, ImageUp, Loader2, Sparkles } from 'lucide-react';
 
 type CreditPlan = {
   id: string;
@@ -51,6 +51,8 @@ export function PricingPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  const [accountCopied, setAccountCopied] = useState(false);
+  const [copyError, setCopyError] = useState('');
   const activePlan = plans.find((plan) => plan.id === selectedPlan) || plans.find((plan) => plan.popular) || plans[0];
   const activePaymentConfig = activePlan
     ? {
@@ -66,6 +68,11 @@ export function PricingPage() {
       activePaymentConfig.paymentAccountNumber,
   );
   const pendingRequest = useMemo(() => requests.find((request) => request.status === 'pending'), [requests]);
+
+  useEffect(() => {
+    setAccountCopied(false);
+    setCopyError('');
+  }, [selectedPlan]);
 
   useEffect(() => {
     let cancelled = false;
@@ -103,6 +110,19 @@ export function PricingPage() {
       cancelled = true;
     };
   }, []);
+
+  async function copyPaymentAccount() {
+    const accountNumber = activePaymentConfig?.paymentAccountNumber;
+    if (!accountNumber) return;
+    setCopyError('');
+    try {
+      await navigator.clipboard.writeText(accountNumber);
+      setAccountCopied(true);
+      window.setTimeout(() => setAccountCopied(false), 1800);
+    } catch {
+      setCopyError('Could not copy. Please select the account number and copy it manually.');
+    }
+  }
 
   async function submitPayment(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -225,15 +245,27 @@ export function PricingPage() {
                   <dl className="space-y-3">
                     <div><dt className="text-[10px] font-semibold uppercase tracking-wider text-zinc-400">Method</dt><dd className="mt-0.5 font-semibold text-zinc-900 dark:text-zinc-100">{activePaymentConfig.paymentMethodName}</dd></div>
                     <div><dt className="text-[10px] font-semibold uppercase tracking-wider text-zinc-400">Account name</dt><dd className="mt-0.5 font-semibold text-zinc-900 dark:text-zinc-100">{activePaymentConfig.paymentRecipientName}</dd></div>
-                    <div><dt className="text-[10px] font-semibold uppercase tracking-wider text-zinc-400">Number / account</dt><dd className="mt-0.5 select-all font-mono text-lg font-bold text-emerald-800 dark:text-emerald-300">{activePaymentConfig.paymentAccountNumber}</dd></div>
+                    <div>
+                      <dt className="text-[10px] font-semibold uppercase tracking-wider text-zinc-400">Number / account</dt>
+                      <div className="mt-0.5 flex items-center gap-2">
+                        <dd className="select-all font-mono text-lg font-bold text-emerald-800 dark:text-emerald-300">
+                          {activePaymentConfig.paymentAccountNumber}
+                        </dd>
+                        <button
+                          type="button"
+                          onClick={copyPaymentAccount}
+                          aria-label={accountCopied ? 'Account number copied' : 'Copy account number'}
+                          className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg border border-zinc-200 bg-white px-2 text-[11px] font-semibold text-zinc-600 transition hover:border-emerald-300 hover:text-emerald-700 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:border-emerald-800 dark:hover:text-emerald-300"
+                        >
+                          {accountCopied ? <Check className="h-3.5 w-3.5 text-emerald-600" /> : <Copy className="h-3.5 w-3.5" />}
+                          {accountCopied ? 'Copied' : 'Copy'}
+                        </button>
+                      </div>
+                      {copyError && <p role="alert" className="mt-1 text-[11px] text-rose-600 dark:text-rose-400">{copyError}</p>}
+                    </div>
                   </dl>
                   {activePaymentConfig.paymentQrImageUrl ? (
-                    <div className="flex flex-col items-center rounded-2xl border-2 border-emerald-600 bg-white p-3 shadow-[0_0_0_4px_rgba(5,150,105,0.12)] dark:border-emerald-500 dark:bg-zinc-950">
-                      <div className="flex h-36 w-36 items-center justify-center rounded-xl border border-zinc-300 bg-white p-1 dark:border-zinc-600">
-                        <img src={activePaymentConfig.paymentQrImageUrl} alt="Payment QR code" className="h-full w-full object-contain" />
-                      </div>
-                      <span className="mt-2 inline-flex items-center gap-1 text-[10px] font-semibold text-zinc-600 dark:text-zinc-300"><QrCode className="h-3 w-3" />Scan to pay</span>
-                    </div>
+                    <img src={activePaymentConfig.paymentQrImageUrl} alt="Payment QR code" className="h-40 w-40 object-contain" />
                   ) : (
                     <div className="flex min-h-32 items-center justify-center rounded-xl border border-dashed border-zinc-300 px-4 text-center text-xs text-zinc-400 dark:border-zinc-700">QR code not provided</div>
                   )}

@@ -141,7 +141,7 @@ export function ProfilePage({ profile }: { profile: Profile }) {
                 </div>
                 {profile.role !== 'admin' && !profile.unlimitedCredits && (
                   <p className="mt-3 text-xs text-zinc-500">
-                    Purchased, referral, or admin-granted credits. No automatic daily refill.
+                    {profile.dailyCreditsRemaining} daily credits reset to 100 each day. Purchased, referral, and admin-granted credits are separate.
                   </p>
                 )}
                 {profile.activePlan && (

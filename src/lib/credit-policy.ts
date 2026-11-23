@@ -1,2 +1,3 @@
-export const DAILY_CREDIT_ALLOWANCE = 0;
+export const DAILY_CREDIT_ALLOWANCE = 100;
+export const DAILY_CREDIT_POLICY_VERSION = 1;
 export const WATERMARK_CREDIT_COST = 5;
