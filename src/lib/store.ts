@@ -6,7 +6,12 @@ import type { SessionPayload } from '@/lib/auth';
 import { DAILY_CREDIT_ALLOWANCE, WATERMARK_CREDIT_COST } from '@/lib/credit-policy';
 import { DEFAULT_CREDIT_PLANS, REFERRAL_REWARD_CREDITS, type CreditPlan } from '@/lib/pricing';
 import { hashPassword, secretsMatch, verifyPassword } from '@/lib/password';
-import { readSupabaseStore, writeSupabaseStore } from '@/lib/supabase-store';
+import {
+  readSupabasePaymentQr,
+  readSupabaseStore,
+  saveSupabasePaymentQr,
+  writeSupabaseStore,
+} from '@/lib/supabase-store';
 
 export type Role = 'admin' | 'member';
 
@@ -221,6 +226,8 @@ function planPaymentQrPath(planId: string, extension: 'png' | 'jpg' | 'webp') {
 }
 
 export async function savePaymentQrImage(extension: 'png' | 'jpg' | 'webp', bytes: Uint8Array) {
+  const contentType = extension === 'jpg' ? 'image/jpeg' : `image/${extension}`;
+  if (await saveSupabasePaymentQr('global', contentType, bytes)) return;
   const path = paymentQrPath(extension);
   mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, bytes);
@@ -233,17 +240,23 @@ export async function savePaymentQrImage(extension: 'png' | 'jpg' | 'webp', byte
 }
 
 export async function readPaymentQrImage() {
+  const databaseImage = await readSupabasePaymentQr('global');
+  if (databaseImage) return databaseImage;
   for (const extension of ['png', 'jpg', 'webp'] as const) {
     const path = paymentQrPath(extension);
     if (existsSync(path)) {
       const contentType = extension === 'jpg' ? 'image/jpeg' : `image/${extension}`;
-      return { bytes: readFileSync(path), contentType };
+      const bytes = readFileSync(path);
+      await saveSupabasePaymentQr('global', contentType, bytes);
+      return { bytes, contentType };
     }
   }
   return null;
 }
 
 export async function savePlanPaymentQrImage(planId: string, extension: 'png' | 'jpg' | 'webp', bytes: Uint8Array) {
+  const contentType = extension === 'jpg' ? 'image/jpeg' : `image/${extension}`;
+  if (await saveSupabasePaymentQr(`plan:${planId}`, contentType, bytes)) return;
   const path = planPaymentQrPath(planId, extension);
   mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, bytes);
@@ -256,11 +269,15 @@ export async function savePlanPaymentQrImage(planId: string, extension: 'png' | 
 }
 
 export async function readPlanPaymentQrImage(planId: string) {
+  const databaseImage = await readSupabasePaymentQr(`plan:${planId}`);
+  if (databaseImage) return databaseImage;
   for (const extension of ['png', 'jpg', 'webp'] as const) {
     const path = planPaymentQrPath(planId, extension);
     if (existsSync(path)) {
       const contentType = extension === 'jpg' ? 'image/jpeg' : `image/${extension}`;
-      return { bytes: readFileSync(path), contentType };
+      const bytes = readFileSync(path);
+      await saveSupabasePaymentQr(`plan:${planId}`, contentType, bytes);
+      return { bytes, contentType };
     }
   }
   return null;

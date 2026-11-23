@@ -11,7 +11,9 @@ export async function GET(request: Request) {
   const image = planId ? await readPlanPaymentQrImage(planId) : await readPaymentQrImage();
   if (!image) return new Response('QR image not found.', { status: 404 });
 
-  return new Response(image.bytes, {
+  const body = new ArrayBuffer(image.bytes.byteLength);
+  new Uint8Array(body).set(image.bytes);
+  return new Response(body, {
     headers: {
       'Content-Type': image.contentType,
       'Cache-Control': 'private, no-store',

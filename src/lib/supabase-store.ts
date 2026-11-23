@@ -15,6 +15,50 @@ function adminClient() {
   });
 }
 
+export async function saveSupabasePaymentQr(
+  id: string,
+  contentType: string,
+  bytes: Uint8Array,
+): Promise<boolean> {
+  const supabase = adminClient();
+  if (!supabase) return false;
+  const { error } = await supabase.from('lumina_payment_qr').upsert(
+    {
+      id,
+      content_type: contentType,
+      image_base64: Buffer.from(bytes).toString('base64'),
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: 'id' },
+  );
+  if (error) throw new Error(`Could not save payment QR in the database: ${error.message}`);
+  return true;
+}
+
+export async function readSupabasePaymentQr(
+  id: string,
+): Promise<{ bytes: Buffer; contentType: string } | null> {
+  const supabase = adminClient();
+  if (!supabase) return null;
+  const { data, error } = await supabase
+    .from('lumina_payment_qr')
+    .select('content_type, image_base64')
+    .eq('id', id)
+    .maybeSingle();
+  if (error) throw new Error(`Could not read payment QR from the database: ${error.message}`);
+  if (!data) return null;
+  if (
+    !['image/png', 'image/jpeg', 'image/webp'].includes(data.content_type) ||
+    typeof data.image_base64 !== 'string'
+  ) {
+    throw new Error('The saved payment QR record is invalid.');
+  }
+  return {
+    bytes: Buffer.from(data.image_base64, 'base64'),
+    contentType: data.content_type,
+  };
+}
+
 export async function readSupabaseStore<T extends StoreLike>(
   normalize: (value: T) => T,
 ): Promise<T | null> {
