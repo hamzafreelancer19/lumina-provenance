@@ -11,6 +11,7 @@ export async function POST(request: Request) {
   response.cookies.set({
     ...sessionCookieOptions(0),
     value: '',
+    expires: new Date(0),
   });
   return response;
 }

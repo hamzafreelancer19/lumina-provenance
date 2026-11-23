@@ -1,6 +1,12 @@
 import { NextResponse } from 'next/server';
 import { requireAdmin } from '@/lib/access';
-import { logActivity, savePaymentQrImage, setPaymentQrImageUrl } from '@/lib/store';
+import {
+  logActivity,
+  savePaymentQrImage,
+  savePlanPaymentQrImage,
+  setCreditPlanQrImageUrl,
+  setPaymentQrImageUrl,
+} from '@/lib/store';
 
 export const runtime = 'nodejs';
 
@@ -43,6 +49,7 @@ export async function POST(request: Request) {
   }
 
   const file = form.get('qrImage');
+  const planId = form.get('planId');
   if (!(file instanceof File) || file.size === 0) {
     return NextResponse.json({ error: 'Choose a QR image to upload.' }, { status: 400 });
   }
@@ -61,6 +68,13 @@ export async function POST(request: Request) {
   }
 
   try {
+    if (typeof planId === 'string' && planId) {
+      await savePlanPaymentQrImage(planId, imageType.extension, bytes);
+      const paymentQrImageUrl = `/api/payments/qr?planId=${encodeURIComponent(planId)}`;
+      await setCreditPlanQrImageUrl(planId, paymentQrImageUrl);
+      await logActivity(result.user.username, 'plan.update', `Uploaded QR image for ${planId} plan`);
+      return NextResponse.json({ paymentQrImageUrl });
+    }
     await savePaymentQrImage(imageType.extension, bytes);
     await setPaymentQrImageUrl('/api/payments/qr');
     await logActivity(result.user.username, 'settings.update', 'Uploaded payment QR image');

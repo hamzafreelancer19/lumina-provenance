@@ -214,6 +214,12 @@ function paymentQrPath(extension: 'png' | 'jpg' | 'webp') {
   return join(root, 'payment-qr', `qr.${extension}`);
 }
 
+function planPaymentQrPath(planId: string, extension: 'png' | 'jpg' | 'webp') {
+  if (!/^[a-z0-9-]+$/i.test(planId)) throw new Error('Invalid plan ID.');
+  const root = process.env.VERCEL ? '/tmp' : join(process.cwd(), 'data');
+  return join(root, 'payment-qr', `qr-${planId}.${extension}`);
+}
+
 export async function savePaymentQrImage(extension: 'png' | 'jpg' | 'webp', bytes: Uint8Array) {
   const path = paymentQrPath(extension);
   mkdirSync(dirname(path), { recursive: true });
@@ -235,6 +241,38 @@ export async function readPaymentQrImage() {
     }
   }
   return null;
+}
+
+export async function savePlanPaymentQrImage(planId: string, extension: 'png' | 'jpg' | 'webp', bytes: Uint8Array) {
+  const path = planPaymentQrPath(planId, extension);
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, bytes);
+  for (const otherExtension of ['png', 'jpg', 'webp'] as const) {
+    if (otherExtension !== extension) {
+      const oldPath = planPaymentQrPath(planId, otherExtension);
+      if (existsSync(oldPath)) unlinkSync(oldPath);
+    }
+  }
+}
+
+export async function readPlanPaymentQrImage(planId: string) {
+  for (const extension of ['png', 'jpg', 'webp'] as const) {
+    const path = planPaymentQrPath(planId, extension);
+    if (existsSync(path)) {
+      const contentType = extension === 'jpg' ? 'image/jpeg' : `image/${extension}`;
+      return { bytes: readFileSync(path), contentType };
+    }
+  }
+  return null;
+}
+
+export function setCreditPlanQrImageUrl(id: string, paymentQrImageUrl: string) {
+  return updateStore((store) => {
+    const plan = store.plans.find((item) => item.id === id);
+    if (!plan) throw new Error('Plan not found.');
+    plan.paymentQrImageUrl = paymentQrImageUrl;
+    plan.updatedAt = Date.now();
+  });
 }
 
 export function setPaymentQrImageUrl(paymentQrImageUrl: string) {
@@ -1076,11 +1114,18 @@ export function saveCreditPlan(input: {
   credits: number;
   price: number;
   description: string;
+  paymentMethodName?: string;
+  paymentRecipientName?: string;
+  paymentAccountNumber?: string;
+  paymentQrImageUrl?: string;
   active: boolean;
   popular: boolean;
 }) {
   const name = input.name.trim();
   const description = input.description.trim();
+  const paymentMethodName = input.paymentMethodName?.trim() || '';
+  const paymentRecipientName = input.paymentRecipientName?.trim() || '';
+  const paymentAccountNumber = input.paymentAccountNumber?.trim() || '';
   if (!name || name.length > 40) throw new Error('Plan name must be 1–40 characters.');
   if (!Number.isSafeInteger(input.credits) || input.credits < 1 || input.credits > 1_000_000) {
     throw new Error('Credits must be between 1 and 1,000,000.');
@@ -1090,6 +1135,9 @@ export function saveCreditPlan(input: {
   }
   if (!description || description.length > 120) {
     throw new Error('Plan description must be 1–120 characters.');
+  }
+  if (paymentMethodName.length > 50 || paymentRecipientName.length > 80 || paymentAccountNumber.length > 80) {
+    throw new Error('Plan payment details are too long.');
   }
   return updateStore((store) => {
     let id = input.id?.trim();
@@ -1108,6 +1156,10 @@ export function saveCreditPlan(input: {
       credits: input.credits,
       price: Math.round(input.price * 100) / 100,
       description,
+      paymentMethodName,
+      paymentRecipientName,
+      paymentAccountNumber,
+      paymentQrImageUrl: input.paymentQrImageUrl?.trim() || '',
       active: input.active,
       popular: input.popular,
       updatedAt: Date.now(),

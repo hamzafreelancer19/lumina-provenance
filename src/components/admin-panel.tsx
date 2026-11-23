@@ -31,6 +31,10 @@ type CreditPlan = {
   description: string;
   active: boolean;
   popular: boolean;
+  paymentMethodName?: string;
+  paymentRecipientName?: string;
+  paymentAccountNumber?: string;
+  paymentQrImageUrl?: string;
 };
 
 type UserTools = {
@@ -1067,6 +1071,10 @@ function CreditPlansSection({
   const [credits, setCredits] = useState('');
   const [price, setPrice] = useState('');
   const [description, setDescription] = useState('');
+  const [paymentMethodName, setPaymentMethodName] = useState('');
+  const [paymentRecipientName, setPaymentRecipientName] = useState('');
+  const [paymentAccountNumber, setPaymentAccountNumber] = useState('');
+  const [paymentQrImageUrl, setPaymentQrImageUrl] = useState('');
   const [active, setActive] = useState(true);
   const [popular, setPopular] = useState(false);
   const [pending, setPending] = useState(false);
@@ -1077,6 +1085,10 @@ function CreditPlansSection({
     setCredits('');
     setPrice('');
     setDescription('');
+    setPaymentMethodName('');
+    setPaymentRecipientName('');
+    setPaymentAccountNumber('');
+    setPaymentQrImageUrl('');
     setActive(true);
     setPopular(false);
   }
@@ -1087,6 +1099,10 @@ function CreditPlansSection({
     setCredits(String(plan.credits));
     setPrice(plan.price.toFixed(2));
     setDescription(plan.description);
+    setPaymentMethodName(plan.paymentMethodName || '');
+    setPaymentRecipientName(plan.paymentRecipientName || '');
+    setPaymentAccountNumber(plan.paymentAccountNumber || '');
+    setPaymentQrImageUrl(plan.paymentQrImageUrl || '');
     setActive(plan.active);
     setPopular(plan.popular);
     onError('');
@@ -1107,6 +1123,9 @@ function CreditPlansSection({
           credits: Number(credits),
           price: Number(price),
           description,
+          paymentMethodName,
+          paymentRecipientName,
+          paymentAccountNumber,
           active,
           popular,
         }),
@@ -1192,6 +1211,53 @@ function CreditPlansSection({
           <div className="grid gap-3 sm:grid-cols-2">
             <Field label="Credits" value={credits} onChange={setCredits} type="number" placeholder="1500" />
             <Field label="Price (USD)" value={price} onChange={setPrice} type="number" placeholder="1.25" />
+          </div>
+          <div className="space-y-3 rounded-xl border border-emerald-100 bg-emerald-50/50 p-3 dark:border-emerald-900/50 dark:bg-emerald-950/20">
+            <div>
+              <p className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">Payment method for this plan</p>
+              <p className="mt-1 text-xs leading-5 text-zinc-500">
+                These details appear automatically when a user selects this plan. Leave blank to use the global payment method.
+              </p>
+            </div>
+            <Field label="Method name" value={paymentMethodName} onChange={setPaymentMethodName} placeholder="e.g. JazzCash" />
+            <Field label="Receiver name" value={paymentRecipientName} onChange={setPaymentRecipientName} placeholder="Account holder" />
+            <Field label="Account / mobile number" value={paymentAccountNumber} onChange={setPaymentAccountNumber} placeholder="03xx xxxxxxx" />
+            {editingId ? (
+              <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm font-medium text-zinc-700 transition hover:border-emerald-400 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-200">
+                {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : <CreditCard className="h-4 w-4 text-emerald-700" />}
+                {pending ? 'Uploading QR…' : paymentQrImageUrl ? 'Replace plan QR' : 'Upload plan QR'}
+                <input
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp"
+                  disabled={pending}
+                  className="sr-only"
+                  onChange={async (event) => {
+                    const file = event.target.files?.[0];
+                    event.target.value = '';
+                    if (!file || !editingId) return;
+                    setPending(true);
+                    onError('');
+                    try {
+                      const form = new FormData();
+                      form.set('qrImage', file);
+                      form.set('planId', editingId);
+                      const response = await fetch('/api/admin/payment-qr', { method: 'POST', body: form });
+                      if (!response.ok) throw new Error(await readError(response));
+                      const data = (await response.json()) as { paymentQrImageUrl: string };
+                      setPaymentQrImageUrl(data.paymentQrImageUrl);
+                      onNotice('Plan QR image uploaded.');
+                      await onChange();
+                    } catch (reason) {
+                      onError(reason instanceof Error ? reason.message : 'Could not upload the plan QR image.');
+                    } finally {
+                      setPending(false);
+                    }
+                  }}
+                />
+              </label>
+            ) : (
+              <p className="text-xs text-zinc-500">Save the plan first to upload its QR code.</p>
+            )}
           </div>
           <div className="flex flex-wrap gap-4 rounded-xl border border-zinc-100 p-3">
             <label className="inline-flex items-center gap-2 text-sm text-zinc-700">

@@ -6,6 +6,10 @@ export type CreditPlan = {
   description: string;
   active: boolean;
   popular: boolean;
+  paymentMethodName?: string;
+  paymentRecipientName?: string;
+  paymentAccountNumber?: string;
+  paymentQrImageUrl?: string;
   updatedAt?: number;
 };
 

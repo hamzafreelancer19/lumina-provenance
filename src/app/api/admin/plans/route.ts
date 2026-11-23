@@ -10,6 +10,10 @@ type PlanBody = {
   credits: number;
   price: number;
   description: string;
+  paymentMethodName?: string;
+  paymentRecipientName?: string;
+  paymentAccountNumber?: string;
+  paymentQrImageUrl?: string;
   active: boolean;
   popular: boolean;
 };
@@ -21,6 +25,10 @@ function isPlanBody(value: Record<string, unknown>): value is PlanBody {
     typeof value.credits === 'number' &&
     typeof value.price === 'number' &&
     typeof value.description === 'string' &&
+    (value.paymentMethodName === undefined || typeof value.paymentMethodName === 'string') &&
+    (value.paymentRecipientName === undefined || typeof value.paymentRecipientName === 'string') &&
+    (value.paymentAccountNumber === undefined || typeof value.paymentAccountNumber === 'string') &&
+    (value.paymentQrImageUrl === undefined || typeof value.paymentQrImageUrl === 'string') &&
     typeof value.active === 'boolean' &&
     typeof value.popular === 'boolean'
   );
@@ -53,6 +61,10 @@ export async function POST(request: Request) {
       credits: body.credits,
       price: body.price,
       description: body.description,
+      paymentMethodName: body.paymentMethodName,
+      paymentRecipientName: body.paymentRecipientName,
+      paymentAccountNumber: body.paymentAccountNumber,
+      paymentQrImageUrl: body.paymentQrImageUrl,
       active: body.active,
       popular: body.popular,
     });

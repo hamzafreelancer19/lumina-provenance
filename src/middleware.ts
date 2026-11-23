@@ -50,11 +50,11 @@ export async function middleware(request: NextRequest) {
     pathname === '/contact' ||
     pathname === '/blog' ||
     pathname.startsWith('/blog/');
-  if (isPublicPage) {
-    return NextResponse.next();
-  }
 
   if (!session) {
+    if (isPublicPage) {
+      return NextResponse.next();
+    }
     if (pathname.startsWith('/api/')) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
@@ -63,8 +63,17 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(login);
   }
 
+  const isAdminPage = pathname === '/admin' || pathname.startsWith('/admin/');
+  if (session.role === 'admin' && !isAdminPage && !pathname.startsWith('/api/')) {
+    return NextResponse.redirect(new URL('/admin', request.url));
+  }
+
+  if (isPublicPage) {
+    return NextResponse.next();
+  }
+
   if (
-    (pathname === '/admin' || pathname.startsWith('/admin/') || pathname.startsWith('/api/admin')) &&
+    (isAdminPage || pathname.startsWith('/api/admin')) &&
     session.role !== 'admin'
   ) {
     if (pathname.startsWith('/api/')) {

@@ -12,6 +12,10 @@ type CreditPlan = {
   description: string;
   active: boolean;
   popular: boolean;
+  paymentMethodName?: string;
+  paymentRecipientName?: string;
+  paymentAccountNumber?: string;
+  paymentQrImageUrl?: string;
 };
 
 type PaymentConfig = {
@@ -48,8 +52,18 @@ export function PricingPage() {
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const activePlan = plans.find((plan) => plan.id === selectedPlan) || plans.find((plan) => plan.popular) || plans[0];
+  const activePaymentConfig = activePlan
+    ? {
+        paymentMethodName: activePlan.paymentMethodName || config?.paymentMethodName || '',
+        paymentRecipientName: activePlan.paymentRecipientName || config?.paymentRecipientName || '',
+        paymentAccountNumber: activePlan.paymentAccountNumber || config?.paymentAccountNumber || '',
+        paymentQrImageUrl: activePlan.paymentQrImageUrl || config?.paymentQrImageUrl || '',
+      }
+    : config;
   const hasPaymentDetails = Boolean(
-    config?.paymentMethodName && config.paymentRecipientName && config.paymentAccountNumber,
+    activePaymentConfig?.paymentMethodName &&
+      activePaymentConfig.paymentRecipientName &&
+      activePaymentConfig.paymentAccountNumber,
   );
   const pendingRequest = useMemo(() => requests.find((request) => request.status === 'pending'), [requests]);
 
@@ -206,17 +220,17 @@ export function PricingPage() {
               </div>
               {loading ? (
                 <div className="mt-6 flex items-center gap-2 text-sm text-zinc-500"><Loader2 className="h-4 w-4 animate-spin" />Loading payment method…</div>
-              ) : hasPaymentDetails && config ? (
+              ) : hasPaymentDetails && activePaymentConfig ? (
                 <div className="mt-5 grid gap-4 sm:grid-cols-[1fr_auto]">
                   <dl className="space-y-3">
-                    <div><dt className="text-[10px] font-semibold uppercase tracking-wider text-zinc-400">Method</dt><dd className="mt-0.5 font-semibold text-zinc-900 dark:text-zinc-100">{config.paymentMethodName}</dd></div>
-                    <div><dt className="text-[10px] font-semibold uppercase tracking-wider text-zinc-400">Account name</dt><dd className="mt-0.5 font-semibold text-zinc-900 dark:text-zinc-100">{config.paymentRecipientName}</dd></div>
-                    <div><dt className="text-[10px] font-semibold uppercase tracking-wider text-zinc-400">Number / account</dt><dd className="mt-0.5 select-all font-mono text-lg font-bold text-emerald-800 dark:text-emerald-300">{config.paymentAccountNumber}</dd></div>
+                    <div><dt className="text-[10px] font-semibold uppercase tracking-wider text-zinc-400">Method</dt><dd className="mt-0.5 font-semibold text-zinc-900 dark:text-zinc-100">{activePaymentConfig.paymentMethodName}</dd></div>
+                    <div><dt className="text-[10px] font-semibold uppercase tracking-wider text-zinc-400">Account name</dt><dd className="mt-0.5 font-semibold text-zinc-900 dark:text-zinc-100">{activePaymentConfig.paymentRecipientName}</dd></div>
+                    <div><dt className="text-[10px] font-semibold uppercase tracking-wider text-zinc-400">Number / account</dt><dd className="mt-0.5 select-all font-mono text-lg font-bold text-emerald-800 dark:text-emerald-300">{activePaymentConfig.paymentAccountNumber}</dd></div>
                   </dl>
-                  {config.paymentQrImageUrl ? (
+                  {activePaymentConfig.paymentQrImageUrl ? (
                     <div className="flex flex-col items-center rounded-2xl border-2 border-emerald-600 bg-white p-3 shadow-[0_0_0_4px_rgba(5,150,105,0.12)] dark:border-emerald-500 dark:bg-zinc-950">
                       <div className="flex h-36 w-36 items-center justify-center rounded-xl border border-zinc-300 bg-white p-1 dark:border-zinc-600">
-                        <img src={config.paymentQrImageUrl} alt="Payment QR code" className="h-full w-full object-contain" />
+                        <img src={activePaymentConfig.paymentQrImageUrl} alt="Payment QR code" className="h-full w-full object-contain" />
                       </div>
                       <span className="mt-2 inline-flex items-center gap-1 text-[10px] font-semibold text-zinc-600 dark:text-zinc-300"><QrCode className="h-3 w-3" />Scan to pay</span>
                     </div>
